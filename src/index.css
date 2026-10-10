@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;600;700;800&display=swap');
+@import 'leaflet/dist/leaflet.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Переменные акцента: золотая палитра по умолчанию */
+:root {
+  --accent: 202 160 125;
+  --accent-light: 230 201 168;
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-ivory font-sans antialiased overflow-x-hidden;
+    background-image: linear-gradient(160deg, #0d0d0f 0%, #101014 60%, #0d0d0f 100%);
+    background-attachment: fixed;
+  }
+  ::selection { @apply bg-accent/40 text-white; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { @apply bg-bg-secondary; }
+  ::-webkit-scrollbar-thumb { @apply bg-accent/30 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-accent/50; }
+  input[type='checkbox'] { accent-color: rgb(var(--accent)) !important; }
+}
+
+@layer components {
+  .glass-panel { @apply bg-glass backdrop-blur-md border border-glass-border rounded-2xl shadow-lg; }
+  .glass-panel-hover { @apply glass-panel hover:bg-glass-hover hover:border-accent/30 hover:shadow-glow-sm hover:-translate-y-1 transition-all duration-200; }
+  .text-gradient { @apply bg-gradient-to-r from-accent-light to-accent bg-clip-text text-transparent; }
+  .focus-ring { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg; }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* ---------- Появление ---------- */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }
+.animate-slide-up { animation: slideUp 0.35s ease-out; }
+
+/* ---------- Живой фон ---------- */
+@keyframes auroraDrift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(4vw, -3vh, 0) scale(1.08); }
+  100% { transform: translate3d(-3vw, 4vh, 0) scale(0.96); }
+}
+.aurora-drift { animation: auroraDrift 46s ease-in-out infinite alternate; }
+.aurora-drift-slow { animation: auroraDrift 64s ease-in-out infinite alternate-reverse; }
+
+@keyframes rayShimmer { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+.ray-shimmer { animation: rayShimmer 9s ease-in-out infinite; }
+.ray-shimmer-slow { animation: rayShimmer 14s ease-in-out infinite 2s; }
+
+.dust { background-repeat: repeat; }
+.dust-a {
+  background-image: radial-gradient(rgba(230, 201, 168, 0.35) 1px, transparent 1.4px);
+  background-size: 110px 110px;
+  animation: dustFloat 60s linear infinite;
+  opacity: 0.35;
+}
+.dust-b {
+  background-image: radial-gradient(rgba(247, 236, 230, 0.25) 1px, transparent 1.2px);
+  background-size: 70px 70px;
+  animation: dustFloat 90s linear infinite reverse;
+  opacity: 0.25;
+}
+@keyframes dustFloat {
+  from { background-position: 0 0; }
+  to   { background-position: 220px -440px; }
+}
+
+.noise {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+}
+
+.vignette {
+  background: radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(5, 5, 7, 0.55) 100%);
+}
+
+/* ---------- Leaflet: тёмная тема + акцентная кнопка в попапах ---------- */
+.leaflet-container { background: #0d0d0f !important; font-family: 'Manrope', sans-serif; }
+.leaflet-popup-content-wrapper { background: #141416; color: #f7ece6; border: 1px solid rgba(247, 236, 230, 0.10); border-radius: 14px; }
+.leaflet-popup-tip { background: #141416; }
+.leaflet-popup-content { margin: 12px 14px; }
+.leaflet-popup button.bg-purple-600 { background: rgb(var(--accent)); color: #0d0d0f; }
+.leaflet-popup button.bg-purple-600:hover { background: rgb(var(--accent-light)); }
+
+/* Аватар профиля в акцентной палитре */
+div.rounded-full.bg-gradient-to-br { background-image: linear-gradient(135deg, rgb(var(--accent-light)), rgb(var(--accent))) !important; }
