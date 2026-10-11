@@ -1,26 +1,20 @@
-// База данных SQLite через встроенный модуль node:sqlite (Node 22.5+/24).
-// Храним пользователей: email уникален, пароль только в виде bcrypt-хеша.
-// @ts-ignore — типов node:sqlite может не быть в старых @types/node
-import { DatabaseSync } from 'node:sqlite';
+// Хранилище: SQLite. Локально — файл server/data/wiki.db,
+// в проде — облако Turso (libsql). Переключение через env, запросы одинаковые.
+import { createClient } from '@libsql/client';
+import type { Client } from '@libsql/client';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = path.join(here, 'data');
-fs.mkdirSync(dataDir, { recursive: true });
+const localFile = path.join(here, 'data', 'wiki.db');
 
-export const db = new DatabaseSync(path.join(dataDir, 'wiki.db'));
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    email         TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    nickname      TEXT NOT NULL,
-    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
+export const db: Client = process.env.TURSO_DATABASE_URL
+  ? createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN })
+  : (() => {
+      fs.mkdirSync(path.dirname(localFile), { recursive: true });
+      return createClient({ url: `file:${localFile}` });
+    })();
 
 export interface RowUser {
   id: number;
@@ -30,11 +24,34 @@ export interface RowUser {
   created_at: string;
 }
 
-export const findByEmail = (email: string) =>
-  db.prepare('SELECT * FROM users WHERE email = ?').get(email) as RowUser | undefined;
+export async function initDb() {
+  await db.execute(`CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    email         TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    nickname      TEXT NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );`);
+}
 
-export const findById = (id: number) =>
-  db.prepare('SELECT * FROM users WHERE id = ?').get(id) as RowUser | undefined;
+export async function findByEmail(email: string): Promise<RowUser | undefined> {
+  const r = await db.execute({ sql: 'SELECT * FROM users WHERE email = ?', args: [email] });
+  return r.rows[0] as unknown as RowUser | undefined;
+}
 
-export const insertUser = (email: string, hash: string, nickname: string) =>
-  db.prepare('INSERT INTO users (email, password_hash, nickname) VALUES (?, ?, ?)').run(email, hash, nickname);
+export async function findById(id: number): Promise<RowUser | undefined> {
+  const r = await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [id] });
+  return r.rows[0] as unknown as RowUser | undefined;
+}
+
+export async function insertUser(email: string, hash: string, nickname: string) {
+  await db.execute({
+    sql: 'INSERT INTO users (email, password_hash, nickname) VALUES (?, ?, ?)',
+    args: [email, hash, nickname],
+  });
+}
+
+export async function allUsers(): Promise<RowUser[]> {
+  const r = await db.execute('SELECT id, email, nickname, created_at, password_hash FROM users');
+  return r.rows as unknown as RowUser[];
+}

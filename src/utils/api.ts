@@ -1,4 +1,4 @@
-// Клиент API Stellar Wiki
+// Клиент API: dev — через vite-прокси /api, prod — через VITE_API_URL (Render)
 export interface ApiUser {
   id: number;
   email: string;
@@ -10,11 +10,12 @@ export interface AuthPayload {
   user: ApiUser;
 }
 
-// API включён: локально (dev) всегда; в прод — только если задан VITE_API_URL
 export const API_ENABLED: boolean =
   Boolean(import.meta.env.VITE_API_URL) || import.meta.env.DEV;
 
-const BASE = '/api';
+const BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL as string}/api`
+  : '/api';
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string | null): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
