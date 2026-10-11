@@ -3,8 +3,6 @@ import react from '@vitejs/plugin-react';
 // @ts-ignore — node-модуль для keepAlive-агента
 import https from 'node:https';
 
-// Агент с keepAlive: десятки тайлов ходят по нескольким живым соединениям,
-// вместо сотни свежих TLS-рукопожатий (которые CDN ронял)
 const cdnAgent = new https.Agent({
   keepAlive: true,
   maxSockets: 32,
@@ -15,11 +13,17 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      // Наш API: /api/* -> localhost:4000
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
+      // Тайлы игры
       '/wwtiles': {
         target: 'https://game-cdn.appsample.com',
         changeOrigin: true,
         agent: cdnAgent,
-        timeout: 15000,        // не висим вечно: 15 сек максимум
+        timeout: 15000,
         proxyTimeout: 15000,
         rewrite: (path) => path.replace(/^\/wwtiles/, ''),
         configure: (proxy) => {

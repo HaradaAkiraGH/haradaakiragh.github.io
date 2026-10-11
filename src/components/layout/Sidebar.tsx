@@ -1,10 +1,11 @@
-// Плавающий стеклянный сайдбар: умеет сворачиваться в рельсу пропсом collapsed
+// Плавающий стеклянный сайдбар: сворачивание в рельсу, выход через контекст auth
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { House, Users, Map, Trophy, Newspaper, BookOpen, Settings as SettingsIcon, Search, LogOut, Calculator } from 'lucide-react';
 import { NAV_ITEMS } from '../../utils/constants';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { PlayerProfile } from '../../data/types';
+import { useAuth } from '../../hooks/useAuth';
 
 const ICONS: Record<string, any> = {
   home: House, users: Users, map: Map, trophy: Trophy,
@@ -24,9 +25,13 @@ interface Props {
 
 export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
   const [profile] = useLocalStorage<PlayerProfile>('ww_profile', DEFAULT_PROFILE);
+  const { logout } = useAuth();
   const navigate = useNavigate();
 
-  const logout = () => { localStorage.removeItem('ww_auth'); navigate('/login'); };
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   return (
     <aside
@@ -117,7 +122,7 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
         </NavLink>
         {!collapsed && (
           <button
-            onClick={logout}
+            onClick={handleLogout}
             className="p-2.5 lg:p-3 text-gray-500 hover:text-red-300 hover:bg-red-500/10 transition-colors focus-ring shrink-0"
             aria-label="Выйти из аккаунта"
             title="Выйти"

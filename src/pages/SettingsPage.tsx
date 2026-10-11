@@ -1,8 +1,9 @@
-// Настройки: палитра, внешний вид, данные и аккаунт
+// Настройки: палитра, внешний вид, данные и аккаунт (выход через auth-контекст)
 import { useNavigate } from 'react-router-dom';
 import { Palette, Database, LogOut, Download, RotateCcw, Trash2, Brush } from 'lucide-react';
 import { useSettings, applyReduceMotion } from '../hooks/useSettings';
 import { PALETTES, applyPalette, PaletteId } from '../utils/palette';
+import { useAuth } from '../hooks/useAuth';
 
 const Toggle = ({ on, onChange, label, hint }: { on: boolean; onChange: (v: boolean) => void; label: string; hint: string }) => (
   <button
@@ -37,6 +38,7 @@ const ActionButton = ({ icon: Icon, label, onClick, danger }: { icon: any; label
 
 export const SettingsPage = () => {
   const [settings, setSettings] = useSettings();
+  const { logout } = useAuth();
   const navigate = useNavigate();
 
   const set = (patch: Partial<typeof settings>) => setSettings({ ...settings, ...patch });
@@ -71,8 +73,8 @@ export const SettingsPage = () => {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('ww_auth');
+  const handleLogout = () => {
+    logout();
     navigate('/login');
   };
 
@@ -83,7 +85,6 @@ export const SettingsPage = () => {
         <p className="text-gray-400 mt-1">Всё хранится локально в твоём браузере</p>
       </div>
 
-      {/* Палитра */}
       <section className="space-y-3">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wide">
           <Brush size={16} className="text-accent-light" /> Палитра акцента
@@ -110,7 +111,6 @@ export const SettingsPage = () => {
         </div>
       </section>
 
-      {/* Внешний вид */}
       <section className="space-y-3">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wide">
           <Palette size={16} className="text-accent-light" /> Внешний вид
@@ -129,7 +129,6 @@ export const SettingsPage = () => {
         />
       </section>
 
-      {/* Данные и аккаунт */}
       <section className="space-y-3">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wide">
           <Database size={16} className="text-accent-light" /> Данные и аккаунт
@@ -138,7 +137,7 @@ export const SettingsPage = () => {
           <ActionButton icon={Download} label="Скачать бэкап прогресса" onClick={exportBackup} />
           <ActionButton icon={RotateCcw} label="Сбросить прогресс карты" onClick={resetMap} />
           <ActionButton icon={Trash2} label="Сбросить профиль и ростер" onClick={resetProfile} danger />
-          <ActionButton icon={LogOut} label="Выйти из аккаунта" onClick={logout} danger />
+          <ActionButton icon={LogOut} label="Выйти из аккаунта" onClick={handleLogout} danger />
         </div>
       </section>
     </div>

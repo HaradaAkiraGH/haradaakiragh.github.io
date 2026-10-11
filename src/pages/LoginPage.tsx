@@ -1,30 +1,51 @@
-// Логин в стиле WuWa: стеклянная карточка, золото, соц-кнопки-монограммы.
-// Это фан-прототип: подходят ЛЮБЫЕ email и пароль.
+// Вход и регистрация; если уже залогинен — аккуратный <Navigate>, без падений
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
-import { useLocalStorage } from '../hooks/useLocalStorage';
-
-// Монограммы вместо брендовых иконок (их убрали из lucide-react).
-// Захочешь настоящие логотипы — просто вставь сюда SVG-компоненты.
-const SOCIALS = [
-  { label: 'Google', mono: 'G' },
-  { label: 'GitHub', mono: 'GH' },
-  { label: 'LinkedIn', mono: 'IN' },
-];
+import { Navigate, useNavigate } from 'react-router-dom';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, UserRound, AlertCircle } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
+import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
 export const LoginPage = () => {
+  useDocumentMeta({ title: 'Вход', description: 'Войди или создай аккаунт Stellar Wiki.' });
+  const { login, register, demo, ready, user } = useAuth();
+  const navigate = useNavigate();
+
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [nickname, setNickname] = useState('');
   const [show, setShow] = useState(false);
-  const [, setAuth] = useLocalStorage<{ email: string } | null>('ww_auth', null);
-  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  // Уже залогинен — мягко уводим на Главную
+  if (ready && user) {
+    return <Navigate to="/home" replace />;
+  }
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuth({ email: email || 'rover@solaris3.gg' });
-    navigate('/');
+    setError(null);
+
+    if (mode === 'register' && password !== confirm) {
+      setError('Пароли не совпадают');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (mode === 'login') {
+        await login(email.trim(), password);
+      } else {
+        await register(email.trim(), password, nickname.trim());
+      }
+      navigate('/home');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Что-то пошло не так');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const inputClass =
@@ -32,15 +53,18 @@ export const LoginPage = () => {
 
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
-      {/* Фон: золотые лучи и пятна */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div className="absolute -top-32 right-[-5%] w-[480px] h-[140%] rotate-[25deg] bg-gradient-to-b from-accent/[0.08] to-transparent blur-2xl" />
         <div className="absolute bottom-[-20%] left-[-10%] w-[520px] h-[520px] rounded-full bg-accent/10 blur-[140px]" />
-        <div className="absolute top-[10%] left-[15%] w-[300px] h-[300px] rounded-full bg-ivory/[0.04] blur-[100px]" />
       </div>
 
-      {/* Карточка */}
       <div className="relative w-full max-w-md glass-panel rounded-3xl p-8 backdrop-blur-2xl animate-slide-up">
+        {demo && (
+          <p className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-200 text-xs text-center">
+            Демо-режим: облачный API не подключён, вход принимает любые данные
+          </p>
+        )}
+
         <h1 className="text-3xl font-extrabold text-ivory text-center">
           {mode === 'login' ? (
             <>С возвращением, <span className="text-gradient">Rover</span></>
@@ -51,10 +75,33 @@ export const LoginPage = () => {
         <p className="text-center text-gray-400 text-sm mt-2">
           {mode === 'login'
             ? 'Войди, чтобы продолжить путь по Соларис-3'
-            : 'Создай профиль резонатора и начни коллекцию'}
+            : 'Создай аккаунт резонатора: email, пароль и позывной'}
         </p>
 
-        <form onSubmit={submit} className="mt-8 space-y-4">
+        {error && (
+          <p className="mt-4 flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+            <AlertCircle size={15} className="shrink-0" /> {error}
+          </p>
+        )}
+
+        <form onSubmit={submit} className="mt-6 space-y-4">
+          {mode === 'register' && (
+            <div>
+              <label className="block text-xs text-gray-400 mb-1.5" htmlFor="nickname">Позывной</label>
+              <div className="relative">
+                <UserRound size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input
+                  id="nickname"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
+                  placeholder="Как тебя звать в Соларис-3?"
+                  className={inputClass}
+                  required
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs text-gray-400 mb-1.5" htmlFor="email">Email</label>
             <div className="relative">
@@ -66,6 +113,7 @@ export const LoginPage = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="rover@solaris3.gg"
                 className={inputClass}
+                required
               />
             </div>
           </div>
@@ -79,8 +127,9 @@ export const LoginPage = () => {
                 type={show ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder={mode === 'register' ? 'Минимум 8 символов, буквы и цифры' : '••••••••'}
                 className={inputClass}
+                required
               />
               <button
                 type="button"
@@ -93,54 +142,42 @@ export const LoginPage = () => {
             </div>
           </div>
 
-          {mode === 'login' && (
-            <div className="text-right">
-              <button type="button" className="text-xs text-accent-light hover:underline focus-ring rounded">
-                Забыли пароль?
-              </button>
+          {mode === 'register' && (
+            <div>
+              <label className="block text-xs text-gray-400 mb-1.5" htmlFor="confirm">Повтори пароль</label>
+              <div className="relative">
+                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input
+                  id="confirm"
+                  type={show ? 'text' : 'password'}
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  placeholder="••••••••"
+                  className={inputClass}
+                  required
+                />
+              </div>
             </div>
           )}
 
           <button
             type="submit"
-            className="w-full h-12 rounded-xl bg-gradient-to-r from-accent to-accent-light text-bg font-bold flex items-center justify-center gap-2 hover:shadow-glow transition-all focus-ring"
+            disabled={busy}
+            className="w-full h-12 rounded-xl bg-gradient-to-r from-accent to-accent-light text-bg font-bold flex items-center justify-center gap-2 hover:shadow-glow transition-all focus-ring disabled:opacity-50"
           >
-            {mode === 'login' ? 'Войти' : 'Создать аккаунт'}
-            <ArrowRight size={18} />
+            {busy ? 'Секунду...' : mode === 'login' ? 'Войти' : 'Создать аккаунт'}
+            {!busy && <ArrowRight size={18} />}
           </button>
         </form>
-
-        <div className="flex items-center gap-3 my-6">
-          <span className="flex-1 h-px bg-glass-border" />
-          <span className="text-xs text-gray-500">или продолжить с</span>
-          <span className="flex-1 h-px bg-glass-border" />
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          {SOCIALS.map((s) => (
-            <button
-              key={s.label}
-              onClick={submit}
-              className="h-12 rounded-xl bg-glass border border-glass-border flex items-center justify-center text-sm font-extrabold tracking-wider text-gray-300 hover:text-bg hover:bg-gradient-to-r hover:from-accent hover:to-accent-light hover:border-accent/40 transition-all focus-ring"
-              aria-label={`Войти через ${s.label}`}
-            >
-              {s.mono}
-            </button>
-          ))}
-        </div>
 
         <p className="text-center text-sm text-gray-400 mt-6">
           {mode === 'login' ? 'Нет аккаунта?' : 'Уже есть аккаунт?'}{' '}
           <button
-            onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+            onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); }}
             className="text-accent-light font-semibold hover:underline focus-ring rounded"
           >
             {mode === 'login' ? 'Создать' : 'Войти'}
           </button>
-        </p>
-
-        <p className="text-center text-[11px] text-gray-600 mt-4">
-          Фан-прототип: подойдут любые email и пароль
         </p>
       </div>
     </div>
