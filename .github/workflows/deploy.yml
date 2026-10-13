@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      VITE_API_URL:
+      VITE_API_URL: https://gmooefihqwgwqbtrxnja.supabase.co/functions/v1/auth-api/api/health
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
