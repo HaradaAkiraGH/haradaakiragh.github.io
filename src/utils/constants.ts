@@ -4,6 +4,7 @@ import { ElementType, MapMarkerType, Tier, WeaponType } from '../data/types';
 // Меню сайдбара
 export const NAV_ITEMS = [
   { id: 'home', label: 'Главная', icon: 'home', path: '/home' },
+  { id: 'pulls', label: 'Крутки', path: '/pulls', icon: 'trophy' },
   { id: 'characters', label: 'Персонажи', icon: 'users', path: '/characters' },
   { id: 'map', label: 'Карта', icon: 'map', path: '/map' },
   { id: 'meta', label: 'Мета', icon: 'trophy', path: '/meta' },

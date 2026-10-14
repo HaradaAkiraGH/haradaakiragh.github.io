@@ -18,6 +18,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ de
 const NewsPage = lazy(() => import('./pages/NewsPage').then((m) => ({ default: m.NewsPage })));
 const GuidesPage = lazy(() => import('./pages/GuidesPage').then((m) => ({ default: m.GuidesPage })));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
+const PullsPage = lazy(() => import('./pages/PullsPage').then((m) => ({ default: m.PullsPage })));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-bg">
@@ -41,6 +42,7 @@ export function App() {
             <Route path="/build/:code" element={<BuildPage />} />
             <Route path="/" element={<Guard />}>
               <Route index element={<Navigate to="/home" replace />} />
+              <Route path="pulls" element={<PullsPage />} />
               <Route path="home" element={<HomePage />} />
               <Route path="characters" element={<CharactersPage />} />
               <Route path="characters/:id" element={<CharacterPage />} />
