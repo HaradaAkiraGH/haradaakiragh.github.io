@@ -1,10 +1,11 @@
 // Все типы данных проекта
-
 export type ElementType = 'Spectro' | 'Havoc' | 'Fusion' | 'Glacio' | 'Electro' | 'Aero';
 export type WeaponType = 'Sword' | 'Broadblade' | 'Pistol' | 'Gauntlets' | 'Rectifier';
 export type Rarity = 4 | 5;
-export type CharacterRole = 'Main DPS' | 'Sub DPS' | 'Support' | 'Healer';
-export type Tier = 'S' | 'A' | 'B' | 'C';
+export type CharacterRole = 'Main DPS' | 'Sub DPS' | 'Support' | 'Healer' | 'Defender';
+export type GameMode = 'Tower of Adversity' | 'Illusory Realm' | 'General';
+// '-' используется для персонажей, у которых мета-рейтинг ещё не определён (волна 1)
+export type Tier = 'S' | 'A' | 'B' | 'C' | '-';
 export type MapMarkerType = 'chest' | 'puzzle' | 'resource' | 'echo' | 'boss' | 'viewpoint';
 
 export interface Character {
@@ -37,7 +38,7 @@ export interface EchoSet {
 export interface WeaponInfo {
   name: string;
   type: 'Signature' | 'Alternative';
-  rating: number; // % от сигнатурного оружия
+  rating: number;
   source: string;
 }
 
@@ -49,7 +50,7 @@ export interface RotationStep {
 }
 
 export interface TeamComposition {
-  members: string[]; // id персонажей
+  members: string[];
   synergy: string;
   role: string;
 }
