@@ -4,7 +4,7 @@ export type WeaponType = 'Sword' | 'Broadblade' | 'Pistol' | 'Gauntlets' | 'Rect
 export type Rarity = 4 | 5;
 export type CharacterRole = 'Main DPS' | 'Sub DPS' | 'Support' | 'Healer' | 'Defender';
 export type GameMode = 'Tower of Adversity' | 'Illusory Realm' | 'General';
-// '-' используется для персонажей, у которых мета-рейтинг ещё не определён (волна 1)
+// '-' используется для персонажей, у которых мета-рейтинг ещё не определён
 export type Tier = 'S' | 'A' | 'B' | 'C' | '-';
 export type MapMarkerType = 'chest' | 'puzzle' | 'resource' | 'echo' | 'boss' | 'viewpoint';
 
