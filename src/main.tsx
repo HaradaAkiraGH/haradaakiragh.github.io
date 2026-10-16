@@ -4,6 +4,7 @@ import { App } from './App';
 import './index.css';
 import { applyReduceMotion } from './hooks/useSettings';
 import { applyPalette } from './utils/palette';
+import { loadCharacterOverrides } from './data/overrides';
 
 // Применяем сохранённые настройки до первой отрисовки
 try {
@@ -14,8 +15,19 @@ try {
   // первый запуск — настроек ещё нет
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+// Сначала тянем серверные правки карточек, потом рисуем приложение.
+// Таймаут 2.5с: если API недоступен, сайт откроется на базовых данных.
+const boot = async () => {
+  await Promise.race([
+    loadCharacterOverrides(),
+    new Promise((resolve) => setTimeout(resolve, 2500)),
+  ]);
+};
+
+boot().finally(() => {
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  );
+});

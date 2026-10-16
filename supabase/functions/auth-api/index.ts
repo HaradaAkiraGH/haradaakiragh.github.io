@@ -1,9 +1,8 @@
 // @ts-nocheck — Deno (Supabase Edge)
-// Stellar Wiki API: auth + профиль/ростер + pull tracker (идемпотентный импорт)
+// Stellar Wiki API: auth + профиль/ростер + pull tracker + правки карточек (admin)
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import bcrypt from 'npm:bcryptjs@2.4.3';
 import jwt from 'npm:jsonwebtoken@9.0.2';
-
 const ALLOWED = ['http://localhost:5173', 'http://localhost:5174', 'https://haradaakiragh.github.io'];
 const corsHeaders = (req: Request): Record<string, string> => {
   const origin = req.headers.get('origin') ?? '';
@@ -15,12 +14,10 @@ const corsHeaders = (req: Request): Record<string, string> => {
 };
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...headers } });
-
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const JWT_SECRET = Deno.env.get('JWT_SECRET') ?? 'dev-secret-change-me';
 const signToken = (id: number) => jwt.sign({ uid: id }, JWT_SECRET, { expiresIn: '7d' });
 const passwordOk = (p: string) => p.length >= 8 && /[A-Za-zА-Яа-я]/.test(p) && /[0-9]/.test(p);
-
 const authUser = async (req: Request) => {
   const auth = req.headers.get('authorization') ?? '';
   if (!auth.startsWith('Bearer ')) return null;
@@ -30,7 +27,10 @@ const authUser = async (req: Request) => {
     return data ?? null;
   } catch { return null; }
 };
-
+const requireAdmin = async (req: Request) => {
+  const u = await authUser(req);
+  return u && u.role === 'admin' ? u : null;
+};
 const ALIASES = {
   player: ['player_id', 'pid', 'player', 'playerId'],
   record: ['record_id', 'rid', 'record', 'recordId'],
@@ -38,7 +38,6 @@ const ALIASES = {
   resources: ['resources_id', 'res', 'resources', 'resourcesId'],
   gacha: ['gacha_id', 'gachaId', 'gacha'],
 };
-
 function parseConveneUrl(url: string) {
   try {
     let query = '';
@@ -63,9 +62,7 @@ function parseConveneUrl(url: string) {
     };
   } catch { return null; }
 }
-
 const GACHA_HOST = 'https://gmserver-api.aki-game2.net';
-
 const KNOWN_POOL_IDS: Record<number, string[]> = {
   1: ['100001', '100002', ''],
   2: ['100084', '100085', ''],
@@ -76,7 +73,6 @@ const KNOWN_POOL_IDS: Record<number, string[]> = {
   7: ['100088', ''],
   8: ['100089', ''],
 };
-
 async function queryPool(params: any, poolType: number) {
   const candidates: string[] = [];
   if (params.resources_id) candidates.push(params.resources_id);
@@ -85,7 +81,6 @@ async function queryPool(params: any, poolType: number) {
     if (!candidates.includes(id)) candidates.push(id);
   }
   if (!candidates.length) candidates.push('');
-
   for (const cardPoolId of candidates) {
     try {
       const res = await fetch(`${GACHA_HOST}/gacha/record/query`, {
@@ -116,7 +111,6 @@ async function queryPool(params: any, poolType: number) {
   }
   return { ok: false, list: null, cardPoolId: null };
 }
-
 Deno.serve(async (req) => {
   const headers = corsHeaders(req);
   if (req.method === 'OPTIONS') return new Response('ok', { headers });
@@ -126,21 +120,19 @@ Deno.serve(async (req) => {
   path = path.replace(/\/\/+/g, '/').replace(/\/+$/, '');
   if (path.startsWith('/api/api/')) path = path.slice(4);
   if (path === '') path = '/api/health';
-
   try {
     if (path === '/api/health' || path === '/') {
       return json({ ok: true, service: 'wuwa-wiki-api (edge)', time: new Date().toISOString() }, 200, headers);
     }
-
     /* ----- AUTH ----- */
     if (path === '/api/auth/register' && req.method === 'POST') {
       const body = await req.json().catch(() => ({}));
       const email = String(body.email ?? '').toLowerCase().trim();
       const password = String(body.password ?? '');
       const nickname = String(body.nickname ?? '').trim();
-      if (!/^\S+@\S+\.\S+$/.test(email)) return json({ error: 'Некорректный email' }, 400, headers);
+      if (!/^\S+@\S+$/.test(email)) return json({ error: 'Некорректный email' }, 400, headers);
       if (!passwordOk(password)) return json({ error: 'Пароль минимум 8 символов, буквы и цифры' }, 400, headers);
-      if (nickname.length < 2 || nickname.length > 24) return json({ error: 'Ник от 2 до 24 символов' }, 400, headers);
+      if (nickname.length < 2 || nickname > 24) return json({ error: 'Ник от 2 до 24 символов' }, 400, headers);
       const exists = await sb.from('users').select('id').eq('email', email).maybeSingle();
       if (exists.error) return json({ error: `Ошибка базы: ${exists.error.message}` }, 500, headers);
       if (exists.data) return json({ error: 'Этот email уже зарегистрирован' }, 409, headers);
@@ -148,7 +140,7 @@ Deno.serve(async (req) => {
       const { error } = await sb.from('users').insert({ email, password_hash: hash, nickname });
       if (error) return json({ error: `Ошибка сохранения: ${error.message}` }, 500, headers);
       const { data: user } = await sb.from('users').select('*').eq('email', email).single();
-      return json({ token: signToken(user.id), user: { id: user.id, email: user.email, nickname: user.nickname } }, 201, headers);
+      return json({ token: signToken(user.id), user: { id: user.id, email: user.email, nickname: user.nickname, role: user.role ?? 'user' } }, 201, headers);
     }
     if (path === '/api/auth/login' && req.method === 'POST') {
       const body = await req.json().catch(() => ({}));
@@ -157,14 +149,44 @@ Deno.serve(async (req) => {
       const { data: user, error } = await sb.from('users').select('*').eq('email', email).maybeSingle();
       if (error) return json({ error: `Ошибка базы: ${error.message}` }, 500, headers);
       if (!user || !bcrypt.compareSync(password, user.password_hash)) return json({ error: 'Неверный email или пароль' }, 401, headers);
-      return json({ token: signToken(user.id), user: { id: user.id, email: user.email, nickname: user.nickname } }, 200, headers);
+      return json({ token: signToken(user.id), user: { id: user.id, email: user.email, nickname: user.nickname, role: user.role ?? 'user' } }, 200, headers);
     }
     if (path === '/api/auth/me' && req.method === 'GET') {
       const user = await authUser(req);
       if (!user) return json({ error: 'Токен недействителен' }, 401, headers);
-      return json({ user: { id: user.id, email: user.email, nickname: user.nickname } }, 200, headers);
+      return json({ user: { id: user.id, email: user.email, nickname: user.nickname, role: user.role ?? 'user' } }, 200, headers);
     }
-
+    /* ----- ПРАВКИ КАРТОЧЕК: публичное чтение (сайт сливает их при старте) ----- */
+    if (path === '/api/characters/overrides' && req.method === 'GET') {
+      const { data, error } = await sb.from('character_edits').select('id, data, updated_at');
+      if (error) return json({ error: `Ошибка базы: ${error.message}` }, 500, headers);
+      return json({ overrides: (data ?? []).map((r: any) => ({ id: r.id, data: r.data, updatedAt: r.updated_at })) }, 200, headers);
+    }
+    /* ----- АДМИН: сохранить / сбросить правку карточки ----- */
+    if (path === '/api/admin/characters' && req.method === 'PUT') {
+      const admin = await requireAdmin(req);
+      if (!admin) return json({ error: 'Нет прав администратора' }, 403, headers);
+      const body = await req.json().catch(() => ({}));
+      const id = String(body.id ?? '');
+      const patch = body.patch;
+      if (!id) return json({ error: 'Не указан id персонажа' }, 400, headers);
+      if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return json({ error: 'patch должен быть объектом' }, 400, headers);
+      const { error } = await sb.from('character_edits').upsert(
+        { id, data: patch, updated_at: new Date().toISOString(), updated_by: admin.id },
+        { onConflict: 'id' },
+      );
+      if (error) return json({ error: `Ошибка сохранения: ${error.message}` }, 500, headers);
+      return json({ ok: true, id }, 200, headers);
+    }
+    if (path === '/api/admin/characters' && req.method === 'DELETE') {
+      const admin = await requireAdmin(req);
+      if (!admin) return json({ error: 'Нет прав администратора' }, 403, headers);
+      const id = new URL(req.url).searchParams.get('id') ?? '';
+      if (!id) return json({ error: 'Не указан id персонажа' }, 400, headers);
+      const { error } = await sb.from('character_edits').delete().eq('id', id);
+      if (error) return json({ error: `Ошибка удаления: ${error.message}` }, 500, headers);
+      return json({ ok: true, id }, 200, headers);
+    }
     /* ----- PROFILE ----- */
     if (path === '/api/profile' && req.method === 'GET') {
       const user = await authUser(req);
@@ -199,8 +221,7 @@ Deno.serve(async (req) => {
         roster: (rows ?? []).map((r: any) => ({ characterId: r.character_id, level: r.level, weapon: r.weapon, echoSet: r.echo_set, source: r.source })),
       }, 200, headers);
     }
-
-    /* ----- PULLS GET: номера круток пересчитываются при чтении ----- */
+    /* ----- PULLS GET ----- */
     if (path === '/api/pulls' && req.method === 'GET') {
       const user = await authUser(req);
       if (!user) return json({ error: 'Нет токена' }, 401, headers);
@@ -218,11 +239,10 @@ Deno.serve(async (req) => {
       }));
       const { data: bannerRows } = await sb.from('banners').select('id, name').order('id');
       const banners = (bannerRows ?? []).map((b: any) => ({ id: b.id, name: b.name }));
-
       const stats: Record<string, any> = {};
       const bannerIds = [...new Set(numbered.map((p: any) => p.banner_id))] as string[];
       for (const bannerId of bannerIds) {
-        const bp = numbered.filter((p: any) => p.banner_id === bannerId); // по возрастанию
+        const bp = numbered.filter((p: any) => p.banner_id === bannerId);
         const fives = bp.filter((p: any) => p.rarity === 5);
         const fours = bp.filter((p: any) => p.rarity === 4);
         const lastFive = fives.length ? fives[fives.length - 1] : null;
@@ -239,35 +259,29 @@ Deno.serve(async (req) => {
       }
       return json({ pulls, stats, banners }, 200, headers);
     }
-
-    /* ----- PULLS IMPORT: seq + upsert-ignore ----- */
+    /* ----- PULLS IMPORT ----- */
     if (path === '/api/pulls/import' && req.method === 'POST') {
       const user = await authUser(req);
       if (!user) return json({ error: 'Нет токена' }, 401, headers);
       const body = await req.json().catch(() => ({}));
       const url = String(body.url ?? '').trim();
       if (!url) return json({ error: 'Вставь URL истории круток' }, 400, headers);
-
       const params = parseConveneUrl(url);
       if (!params || !params.player_id || !params.record_id || !params.server_id) {
         return json({ error: 'Не удалось распарсить URL', debug: { keys: params?.keys ?? null } }, 400, headers);
       }
-
       const bannerUpserts: any[] = [];
       let total = 0;
       const perBanner: Record<string, number> = {};
       const debug: any[] = [];
-
       for (let poolType = 1; poolType <= 8; poolType++) {
         const r = await queryPool(params, poolType);
         if (!r.ok || !r.list || r.list.length === 0) {
           debug.push({ pool: poolType, ok: false, usedCardPoolId: r.cardPoolId });
           continue;
         }
-
         const poolName = String(r.list[0]?.cardPoolType ?? `Пуль ${poolType}`);
         bannerUpserts.push({ id: String(poolType), name: poolName, type: 'pool', is_limited: false });
-
         const sorted = [...r.list].sort((a, b) => String(a.time).localeCompare(String(b.time)));
         const seqCount: Record<string, number> = {};
         const toInsert = sorted.map((p) => {
@@ -291,20 +305,14 @@ Deno.serve(async (req) => {
         perBanner[String(poolType)] = toInsert.length;
         total += toInsert.length;
       }
-
       if (bannerUpserts.length) {
         await sb.from('banners').upsert(bannerUpserts, { onConflict: 'id' });
       }
-
       if (total === 0) {
-        return json({
-          error: 'Kuro отклонил запрос. Вероятнее всего, URL протух — добудь свежий через PowerShell-команду.',
-          debug,
-        }, 502, headers);
+        return json({ error: 'Kuro отклонил запрос. Вероятнее всего, URL протух — добудь свежий через PowerShell-команду.', debug }, 502, headers);
       }
       return json({ ok: true, imported: total, perBanner, playerId: params.player_id }, 200, headers);
     }
-
     /* ----- PULLS DELETE ----- */
     if (path === '/api/pulls' && req.method === 'DELETE') {
       const user = await authUser(req);
@@ -312,7 +320,6 @@ Deno.serve(async (req) => {
       await sb.from('pulls').delete().eq('user_id', user.id);
       return json({ ok: true }, 200, headers);
     }
-
     return json({ error: 'Не найдено', debugPath: path, rawPath }, 404, headers);
   } catch (e) {
     console.error('unhandled:', e);

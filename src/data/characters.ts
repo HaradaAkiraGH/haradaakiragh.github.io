@@ -1,9 +1,11 @@
-// Мок-данные персонажей. Чтобы добавить нового — допиши объект в массив.
-// Волна 2: ростер сверен с prydwen (скрины фильтров по оружию + стихии с карточек).
+// Ядро ростера: 61 персонаж (идентичность + базовые атрибуты).
+// Глубокие данные (эхо, ротации, команды, материалы) живут в details/wave*.ts
+// и подключаются через characterDetails.ts — сам этот файл больше не меняем.
 import { Character } from './types';
+import { CHARACTER_DETAILS } from './characterDetails';
 
-export const CHARACTERS: Character[] = [
-  /* ========== ПОЛНЫЕ ЗАПИСИ (10) ========== */
+const CORE: Character[] = [
+  /* ========== ИСХОДНЫЕ 10 (полные данные прямо здесь) ========== */
   {
     id: 'camellya', name: 'Camellya', title: 'Колючий цветок', rarity: 5, element: 'Havoc', weapon: 'Sword', role: 'Main DPS',
     metaRating: { tower: 'S', realm: 'S' },
@@ -39,9 +41,7 @@ export const CHARACTERS: Character[] = [
     metaRating: { tower: 'A', realm: 'S' },
     strengths: ['Отличный офф-филд урон', 'Быстрая ротация', 'Универсальна в любых командах'],
     weaknesses: ['Средний урон в соло', 'Зависит от смены персонажей'],
-    echoSets: [
-      { name: 'Небесный свет', cost4: 'Фантом: Страж света', distribution: '4-3-3-1-1', mainStats: ['Spectro DMG', 'Crit Rate / Crit DMG', 'ATK%'], subStats: ['Crit Rate', 'Crit DMG', 'Energy Regen'], priority: 1 },
-    ],
+    echoSets: [{ name: 'Небесный свет', cost4: 'Фантом: Страж света', distribution: '4-3-3-1-1', mainStats: ['Spectro DMG', 'Crit Rate / Crit DMG', 'ATK%'], subStats: ['Crit Rate', 'Crit DMG', 'Energy Regen'], priority: 1 }],
     weapons: [
       { name: 'Астральный маяк', type: 'Signature', rating: 100, source: 'Ивентовый баннер' },
       { name: 'Абсолютный пульс', type: 'Alternative', rating: 80, source: 'Крафт у кузнеца' },
@@ -51,21 +51,15 @@ export const CHARACTERS: Character[] = [
       { step: 2, skill: 'Basic Attack x5', timing: '2.0s' },
       { step: 3, skill: 'Resonance Liberation', timing: '4.0s', note: 'Сразу уходить на другого персонажа' },
     ],
-    teams: [
-      { members: ['phoebe', 'jinhsi', 'verina'], synergy: 'Двойной Spectro-резонанс ускоряет зарядку энергии обоих.', role: 'Phoebe — Sub DPS' },
-    ],
-    materials: [
-      { type: 'Ascension', items: [{ name: 'Ядро Спектро', quantity: 46, location: 'Элиты Spectro' }] },
-    ],
+    teams: [{ members: ['phoebe', 'jinhsi', 'verina'], synergy: 'Двойной Spectro-резонанс ускоряет зарядку энергии обоих.', role: 'Phoebe — Sub DPS' }],
+    materials: [{ type: 'Ascension', items: [{ name: 'Ядро Спектро', quantity: 46, location: 'Элиты Spectro' }] }],
   },
   {
     id: 'jinhsi', name: 'Jinhsi', title: 'Магистральный судья', rarity: 5, element: 'Spectro', weapon: 'Broadblade', role: 'Main DPS',
     metaRating: { tower: 'S', realm: 'A' },
     strengths: ['Массивный burst-урон', 'Хороший AoE', 'Красивая анимация ульты'],
     weaknesses: ['Долгие анимации', 'Высокая энергоёмкость'],
-    echoSets: [
-      { name: 'Небесный свет', cost4: 'Фантом: Страж света', distribution: '4-3-3-1-1', mainStats: ['Spectro DMG', 'Crit Rate / Crit DMG', 'ATK%'], subStats: ['Crit Rate', 'Crit DMG', 'ATK%'], priority: 1 },
-    ],
+    echoSets: [{ name: 'Небесный свет', cost4: 'Фантом: Страж света', distribution: '4-3-3-1-1', mainStats: ['Spectro DMG', 'Crit Rate / Crit DMG', 'ATK%'], subStats: ['Crit Rate', 'Crit DMG', 'ATK%'], priority: 1 }],
     weapons: [
       { name: 'Пожинатель веков', type: 'Signature', rating: 100, source: 'Ивентовый баннер' },
       { name: 'Широкий клинок стража', type: 'Alternative', rating: 76, source: 'Стандартный баннер' },
@@ -76,21 +70,15 @@ export const CHARACTERS: Character[] = [
       { step: 3, skill: 'Charged Attack', timing: '2.0s' },
       { step: 4, skill: 'Resonance Liberation', timing: '4.0s' },
     ],
-    teams: [
-      { members: ['jinhsi', 'yinlin', 'verina'], synergy: 'Yinlin закрывает простой Jinhsi во время зарядки.', role: 'Jinhsi — Main DPS' },
-    ],
-    materials: [
-      { type: 'Ascension', items: [{ name: 'Ядро Спектро', quantity: 46, location: 'Элиты Spectro' }] },
-    ],
+    teams: [{ members: ['jinhsi', 'yinlin', 'verina'], synergy: 'Yinlin закрывает простой Jinhsi во время зарядки.', role: 'Jinhsi — Main DPS' }],
+    materials: [{ type: 'Ascension', items: [{ name: 'Ядро Спектро', quantity: 46, location: 'Элиты Spectro' }] }],
   },
   {
     id: 'changli', name: 'Changli', title: 'Советник', rarity: 5, element: 'Fusion', weapon: 'Sword', role: 'Main DPS',
     metaRating: { tower: 'S', realm: 'S' },
     strengths: ['Высокий постоянный DPS', 'Отличная мобильность', 'Сильный burst'],
     weaknesses: ['Сложная ротация', 'Требует практики таймингов'],
-    echoSets: [
-      { name: 'Расплавленный разлом', cost4: 'Кошмар: Пламенный страж', distribution: '4-3-3-1-1', mainStats: ['Fusion DMG', 'Crit Rate / Crit DMG', 'ATK%'], subStats: ['Crit Rate', 'Crit DMG', 'ATK%'], priority: 1 },
-    ],
+    echoSets: [{ name: 'Расплавленный разлом', cost4: 'Кошмар: Пламенный страж', distribution: '4-3-3-1-1', mainStats: ['Fusion DMG', 'Crit Rate / Crit DMG', 'ATK%'], subStats: ['Crit Rate', 'Crit DMG', 'ATK%'], priority: 1 }],
     weapons: [
       { name: 'Пламя вечности', type: 'Signature', rating: 100, source: 'Ивентовый баннер' },
       { name: 'Клинок феникса', type: 'Alternative', rating: 82, source: 'Стандартный баннер' },
@@ -102,21 +90,15 @@ export const CHARACTERS: Character[] = [
       { step: 4, skill: 'Heavy Attack', timing: '2.5s', note: 'Активирует перо феникса' },
       { step: 5, skill: 'Resonance Liberation', timing: '3.5s' },
     ],
-    teams: [
-      { members: ['changli', 'yinlin', 'verina'], synergy: 'Классическая мета-команда: Fusion + Electro резонанс.', role: 'Changli — Main DPS' },
-    ],
-    materials: [
-      { type: 'Ascension', items: [{ name: 'Ядро Фьюжн', quantity: 46, location: 'Элиты Fusion' }] },
-    ],
+    teams: [{ members: ['changli', 'yinlin', 'verina'], synergy: 'Классическая мета-команда: Fusion + Electro резонанс.', role: 'Changli — Main DPS' }],
+    materials: [{ type: 'Ascension', items: [{ name: 'Ядро Фьюжн', quantity: 46, location: 'Элиты Fusion' }] }],
   },
   {
     id: 'yinlin', name: 'Yinlin', title: 'Магистральный инспектор', rarity: 5, element: 'Electro', weapon: 'Rectifier', role: 'Sub DPS',
     metaRating: { tower: 'S', realm: 'A' },
     strengths: ['Лучший офф-филд саб-DPS', 'Постоянное электро-приложение', 'Бафф урона через outro-скилл'],
     weaknesses: ['Средний урон на поле', 'Зависит от кулдаунов'],
-    echoSets: [
-      { name: 'Гром пустоты', cost4: 'Фантом: Громовержец', distribution: '4-3-3-1-1', mainStats: ['Electro DMG', 'Energy Regen', 'ATK%'], subStats: ['Energy Regen', 'ATK%', 'Crit Rate'], priority: 1 },
-    ],
+    echoSets: [{ name: 'Гром пустоты', cost4: 'Фантом: Громовержец', distribution: '4-3-3-1-1', mainStats: ['Electro DMG', 'Energy Regen', 'ATK%'], subStats: ['Energy Regen', 'ATK%', 'Crit Rate'], priority: 1 }],
     weapons: [
       { name: 'Повелитель струн', type: 'Signature', rating: 100, source: 'Ивентовый баннер' },
       { name: 'Абсолютный пульс', type: 'Alternative', rating: 79, source: 'Крафт у кузнеца' },
@@ -126,21 +108,15 @@ export const CHARACTERS: Character[] = [
       { step: 2, skill: 'Resonance Liberation', timing: '1.0s' },
       { step: 3, skill: 'Switch Out', timing: '2.0s', note: 'Оставляет молнии на поле' },
     ],
-    teams: [
-      { members: ['camellya', 'yinlin', 'verina'], synergy: 'Универсальный саб-DPS под любого основного DPS.', role: 'Yinlin — Sub DPS' },
-    ],
-    materials: [
-      { type: 'Ascension', items: [{ name: 'Ядро Электро', quantity: 46, location: 'Элиты Electro' }] },
-    ],
+    teams: [{ members: ['camellya', 'yinlin', 'verina'], synergy: 'Универсальный саб-DPS под любого основного DPS.', role: 'Yinlin — Sub DPS' }],
+    materials: [{ type: 'Ascension', items: [{ name: 'Ядро Электро', quantity: 46, location: 'Элиты Electro' }] }],
   },
   {
     id: 'encore', name: 'Encore', title: 'Дитя эха', rarity: 5, element: 'Fusion', weapon: 'Rectifier', role: 'Main DPS',
     metaRating: { tower: 'A', realm: 'A' },
     strengths: ['Даётся в начале игры', 'Простая ротация', 'Хороший AoE'],
     weaknesses: ['Уступает топовым 5★', 'Ограниченный потенциал'],
-    echoSets: [
-      { name: 'Расплавленный разлом', cost4: 'Кошмар: Пламенный страж', distribution: '4-3-3-1-1', mainStats: ['Fusion DMG', 'Crit Rate / Crit DMG', 'ATK%'], subStats: ['Crit Rate', 'Crit DMG', 'ATK%'], priority: 1 },
-    ],
+    echoSets: [{ name: 'Расплавленный разлом', cost4: 'Кошмар: Пламенный страж', distribution: '4-3-3-1-1', mainStats: ['Fusion DMG', 'Crit Rate / Crit DMG', 'ATK%'], subStats: ['Crit Rate', 'Crit DMG', 'ATK%'], priority: 1 }],
     weapons: [
       { name: 'Звёздная симфония', type: 'Signature', rating: 100, source: 'Ивентовый баннер' },
       { name: 'Абсолютный пульс', type: 'Alternative', rating: 75, source: 'Крафт у кузнеца' },
@@ -150,21 +126,15 @@ export const CHARACTERS: Character[] = [
       { step: 2, skill: 'Basic Attack', timing: '1.0s' },
       { step: 3, skill: 'Resonance Liberation', timing: '3.0s', note: 'Режим овечки усиливает атаки' },
     ],
-    teams: [
-      { members: ['encore', 'yinlin', 'verina'], synergy: 'Стартовая команда новичка.', role: 'Encore — Main DPS' },
-    ],
-    materials: [
-      { type: 'Ascension', items: [{ name: 'Ядро Фьюжн', quantity: 46, location: 'Элиты Fusion' }] },
-    ],
+    teams: [{ members: ['encore', 'yinlin', 'verina'], synergy: 'Стартовая команда новичка.', role: 'Encore — Main DPS' }],
+    materials: [{ type: 'Ascension', items: [{ name: 'Ядро Фьюжн', quantity: 46, location: 'Элиты Fusion' }] }],
   },
   {
     id: 'verina', name: 'Verina', title: 'Ботаник', rarity: 5, element: 'Spectro', weapon: 'Rectifier', role: 'Healer',
     metaRating: { tower: 'S', realm: 'S' },
     strengths: ['Лучший хилер игры', 'Бафф атаки всей команде', 'Подходит в любой состав'],
     weaknesses: ['Почти не наносит урон', 'Только роль поддержки'],
-    echoSets: [
-      { name: 'Целебное сияние', cost4: 'Фантом: Целительница', distribution: '4-3-3-1-1', mainStats: ['Healing Bonus', 'HP%', 'Energy Regen'], subStats: ['Energy Regen', 'HP%', 'ATK%'], priority: 1 },
-    ],
+    echoSets: [{ name: 'Целебное сияние', cost4: 'Фантом: Целительница', distribution: '4-3-3-1-1', mainStats: ['Healing Bonus', 'HP%', 'Energy Regen'], subStats: ['Energy Regen', 'HP%', 'ATK%'], priority: 1 }],
     weapons: [
       { name: 'Угасающий сдвиг', type: 'Signature', rating: 100, source: 'Ивентовый баннер' },
       { name: 'Астральный маяк', type: 'Alternative', rating: 84, source: 'Стандартный баннер' },
@@ -174,21 +144,15 @@ export const CHARACTERS: Character[] = [
       { step: 2, skill: 'Resonance Liberation', timing: '1.0s', note: 'Ставит лечащее поле' },
       { step: 3, skill: 'Switch Out', timing: '2.0s' },
     ],
-    teams: [
-      { members: ['camellya', 'yinlin', 'verina'], synergy: 'Обязательный слот поддержки в 90% команд.', role: 'Verina — Healer' },
-    ],
-    materials: [
-      { type: 'Ascension', items: [{ name: 'Ядро Спектро', quantity: 46, location: 'Элиты Spectro' }] },
-    ],
+    teams: [{ members: ['camellya', 'yinlin', 'verina'], synergy: 'Обязательный слот поддержки в 90% команд.', role: 'Verina — Healer' }],
+    materials: [{ type: 'Ascension', items: [{ name: 'Ядро Спектро', quantity: 46, location: 'Элиты Spectro' }] }],
   },
   {
     id: 'calcharo', name: 'Calcharo', title: 'Генеральный директор', rarity: 5, element: 'Electro', weapon: 'Broadblade', role: 'Main DPS',
     metaRating: { tower: 'A', realm: 'A' },
     strengths: ['Высокий burst-урон', 'Хороший AoE', 'Стильные контратаки'],
     weaknesses: ['Сложная механика парирования', 'Требует точности'],
-    echoSets: [
-      { name: 'Гром пустоты', cost4: 'Фантом: Громовержец', distribution: '4-3-3-1-1', mainStats: ['Electro DMG', 'Crit Rate / Crit DMG', 'ATK%'], subStats: ['Crit Rate', 'Crit DMG', 'ATK%'], priority: 1 },
-    ],
+    echoSets: [{ name: 'Гром пустоты', cost4: 'Фантом: Громовержец', distribution: '4-3-3-1-1', mainStats: ['Electro DMG', 'Crit Rate / Crit DMG', 'ATK%'], subStats: ['Crit Rate', 'Crit DMG', 'ATK%'], priority: 1 }],
     weapons: [
       { name: 'Падение истины', type: 'Signature', rating: 100, source: 'Ивентовый баннер' },
       { name: 'Широкий клинок стража', type: 'Alternative', rating: 74, source: 'Стандартный баннер' },
@@ -199,21 +163,15 @@ export const CHARACTERS: Character[] = [
       { step: 3, skill: 'Basic Attack x5', timing: '2.0s' },
       { step: 4, skill: 'Resonance Liberation', timing: '4.0s', note: 'Призывает фантомных клинков' },
     ],
-    teams: [
-      { members: ['calcharo', 'yinlin', 'verina'], synergy: 'Полная электро-команда с резонансом элемента.', role: 'Calcharo — Main DPS' },
-    ],
-    materials: [
-      { type: 'Ascension', items: [{ name: 'Ядро Электро', quantity: 46, location: 'Элиты Electro' }] },
-    ],
+    teams: [{ members: ['calcharo', 'yinlin', 'verina'], synergy: 'Полная электро-команда с резонансом элемента.', role: 'Calcharo — Main DPS' }],
+    materials: [{ type: 'Ascension', items: [{ name: 'Ядро Электро', quantity: 46, location: 'Элиты Electro' }] }],
   },
   {
     id: 'jiyan', name: 'Jiyan', title: 'Генерал', rarity: 5, element: 'Aero', weapon: 'Broadblade', role: 'Main DPS',
     metaRating: { tower: 'S', realm: 'A' },
     strengths: ['Отличный AoE', 'Высокая мобильность', 'Сильный burst в режиме дракона'],
     weaknesses: ['Слабее против одиночных целей', 'Энергоёмкий'],
-    echoSets: [
-      { name: 'Горный ветер', cost4: 'Фантом: Генерал ветра', distribution: '4-3-3-1-1', mainStats: ['Aero DMG', 'Crit Rate / Crit DMG', 'ATK%'], subStats: ['Crit Rate', 'Crit DMG', 'ATK%'], priority: 1 },
-    ],
+    echoSets: [{ name: 'Горный ветер', cost4: 'Фантом: Генерал ветра', distribution: '4-3-3-1-1', mainStats: ['Aero DMG', 'Crit Rate / Crit DMG', 'ATK%'], subStats: ['Crit Rate', 'Crit DMG', 'ATK%'], priority: 1 }],
     weapons: [
       { name: 'Зелёная вершина', type: 'Signature', rating: 100, source: 'Ивентовый баннер' },
       { name: 'Клинок ночи', type: 'Alternative', rating: 77, source: 'Крафт у кузнеца' },
@@ -224,21 +182,15 @@ export const CHARACTERS: Character[] = [
       { step: 3, skill: 'Basic Attack x3', timing: '1.5s' },
       { step: 4, skill: 'Resonance Liberation', timing: '3.0s', note: 'Режим дракона' },
     ],
-    teams: [
-      { members: ['jiyan', 'yinlin', 'verina'], synergy: 'Aero + Electro резонанс усиливает урон.', role: 'Jiyan — Main DPS' },
-    ],
-    materials: [
-      { type: 'Ascension', items: [{ name: 'Ядро Аэро', quantity: 46, location: 'Элиты Aero' }] },
-    ],
+    teams: [{ members: ['jiyan', 'yinlin', 'verina'], synergy: 'Aero + Electro резонанс усиливает урон.', role: 'Jiyan — Main DPS' }],
+    materials: [{ type: 'Ascension', items: [{ name: 'Ядро Аэро', quantity: 46, location: 'Элиты Aero' }] }],
   },
   {
     id: 'zhezhi', name: 'Zhezhi', title: 'Художница', rarity: 5, element: 'Glacio', weapon: 'Rectifier', role: 'Sub DPS',
     metaRating: { tower: 'A', realm: 'A' },
     strengths: ['Усиливает урон союзника через outro', 'Glacio-приложение', 'Комфортная ротация'],
     weaknesses: ['Нишевая роль', 'Средний личный урон'],
-    echoSets: [
-      { name: 'Морозная решимость', cost4: 'Фантом: Ледяная кисть', distribution: '4-3-3-1-1', mainStats: ['Glacio DMG', 'Energy Regen', 'ATK%'], subStats: ['Energy Regen', 'ATK%', 'Crit Rate'], priority: 1 },
-    ],
+    echoSets: [{ name: 'Морозная решимость', cost4: 'Фантом: Ледяная кисть', distribution: '4-3-3-1-1', mainStats: ['Glacio DMG', 'Energy Regen', 'ATK%'], subStats: ['Energy Regen', 'ATK%', 'Crit Rate'], priority: 1 }],
     weapons: [
       { name: 'Побеги инея', type: 'Signature', rating: 100, source: 'Ивентовый баннер' },
       { name: 'Астральный маяк', type: 'Alternative', rating: 81, source: 'Стандартный баннер' },
@@ -248,15 +200,11 @@ export const CHARACTERS: Character[] = [
       { step: 2, skill: 'Resonance Liberation', timing: '1.0s', note: 'Оставляет холст на поле' },
       { step: 3, skill: 'Switch Out', timing: '2.0s' },
     ],
-    teams: [
-      { members: ['camellya', 'zhezhi', 'verina'], synergy: 'Zhezhi баффает урон Camellya своим холстом.', role: 'Zhezhi — Sub DPS' },
-    ],
-    materials: [
-      { type: 'Ascension', items: [{ name: 'Ядро Glacio', quantity: 46, location: 'Элиты Glacio' }] },
-    ],
+    teams: [{ members: ['camellya', 'zhezhi', 'verina'], synergy: 'Zhezhi баффает урон Camellya своим холстом.', role: 'Zhezhi — Sub DPS' }],
+    materials: [{ type: 'Ascension', items: [{ name: 'Ядро Glacio', quantity: 46, location: 'Элиты Glacio' }] }],
   },
 
-  /* ========== 5★ ЯДРА ========== */
+  /* ========== 51 ЯДРО (глубокие данные приходят из details/wave*.ts) ========== */
   { id: 'jianxin', name: 'Jianxin', title: '—', rarity: 5, element: 'Aero', weapon: 'Gauntlets', role: 'Defender', metaRating: { tower: '-', realm: '-' }, strengths: [], weaknesses: [], echoSets: [], weapons: [], rotation: [], teams: [], materials: [] },
   { id: 'lingyang', name: 'Lingyang', title: '—', rarity: 5, element: 'Glacio', weapon: 'Gauntlets', role: 'Main DPS', metaRating: { tower: '-', realm: '-' }, strengths: [], weaknesses: [], echoSets: [], weapons: [], rotation: [], teams: [], materials: [] },
   { id: 'shorekeeper', name: 'The Shorekeeper', title: '—', rarity: 5, element: 'Spectro', weapon: 'Rectifier', role: 'Healer', metaRating: { tower: '-', realm: '-' }, strengths: [], weaknesses: [], echoSets: [], weapons: [], rotation: [], teams: [], materials: [] },
@@ -293,8 +241,6 @@ export const CHARACTERS: Character[] = [
   { id: 'rover-havoc', name: 'Rover (Havoc)', title: 'Главный герой', rarity: 5, element: 'Havoc', weapon: 'Sword', role: 'Main DPS', metaRating: { tower: '-', realm: '-' }, strengths: [], weaknesses: [], echoSets: [], weapons: [], rotation: [], teams: [], materials: [] },
   { id: 'rover-electro', name: 'Rover (Electro)', title: 'Главный герой', rarity: 5, element: 'Electro', weapon: 'Sword', role: 'Sub DPS', metaRating: { tower: '-', realm: '-' }, strengths: [], weaknesses: [], echoSets: [], weapons: [], rotation: [], teams: [], materials: [] },
   { id: 'rover-aero', name: 'Rover (Aero)', title: 'Главный герой', rarity: 5, element: 'Aero', weapon: 'Sword', role: 'Main DPS', metaRating: { tower: '-', realm: '-' }, strengths: [], weaknesses: [], echoSets: [], weapons: [], rotation: [], teams: [], materials: [] },
-
-  /* ========== 4★ ЯДРА ========== */
   { id: 'yangyang', name: 'Yangyang', title: '—', rarity: 4, element: 'Aero', weapon: 'Sword', role: 'Sub DPS', metaRating: { tower: '-', realm: '-' }, strengths: [], weaknesses: [], echoSets: [], weapons: [], rotation: [], teams: [], materials: [] },
   { id: 'chixia', name: 'Chixia', title: '—', rarity: 4, element: 'Fusion', weapon: 'Pistol', role: 'Sub DPS', metaRating: { tower: '-', realm: '-' }, strengths: [], weaknesses: [], echoSets: [], weapons: [], rotation: [], teams: [], materials: [] },
   { id: 'sanhua', name: 'Sanhua', title: '—', rarity: 4, element: 'Glacio', weapon: 'Sword', role: 'Sub DPS', metaRating: { tower: '-', realm: '-' }, strengths: [], weaknesses: [], echoSets: [], weapons: [], rotation: [], teams: [], materials: [] },
@@ -311,5 +257,11 @@ export const CHARACTERS: Character[] = [
   { id: 'buling', name: 'Buling', title: '—', rarity: 4, element: 'Electro', weapon: 'Rectifier', role: 'Sub DPS', metaRating: { tower: '-', realm: '-' }, strengths: [], weaknesses: [], echoSets: [], weapons: [], rotation: [], teams: [], materials: [] },
   { id: 'rebecca', name: 'Rebecca', title: '—', rarity: 4, element: 'Electro', weapon: 'Pistol', role: 'Sub DPS', metaRating: { tower: '-', realm: '-' }, strengths: [], weaknesses: [], echoSets: [], weapons: [], rotation: [], teams: [], materials: [] },
 ];
+
+// Слияние: ядро + глубокие данные из волн. Детали перекрывают пустые поля ядра.
+export const CHARACTERS: Character[] = CORE.map((c) => {
+  const d = CHARACTER_DETAILS[c.id];
+  return d ? ({ ...c, ...d } as Character) : c;
+});
 
 export const getCharacterById = (id: string) => CHARACTERS.find((c) => c.id === id);
