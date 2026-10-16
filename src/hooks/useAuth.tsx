@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (legacy) {
           try {
             const parsed = JSON.parse(legacy) as { email?: string };
-            setUser({ id: 0, email: parsed.email ?? 'demo@wuwa.gg', nickname: 'Rover' });
+            setUser({ id: 0, email: parsed.email ?? 'demo@wuwa.gg', nickname: 'Rover', role: 'user' });
           } catch {
             /* битый legacy — игнорируем */
           }
@@ -61,7 +61,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(payload.user);
     } else {
       localStorage.setItem(LEGACY_KEY, JSON.stringify({ email }));
-      setUser({ id: 0, email, nickname: 'Rover' });
+      setUser({ id: 0, email, nickname: 'Rover', role: 'user' });
     }
   };
 
