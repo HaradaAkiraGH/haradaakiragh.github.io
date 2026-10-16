@@ -1,7 +1,7 @@
 // Плавающий стеклянный сайдбар: сворачивание в рельсу, выход через контекст auth
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { House, Users, Map, Trophy, Newspaper, BookOpen, Settings as SettingsIcon, Search, LogOut, Calculator } from 'lucide-react';
+import { House, Users, Map, Trophy, Newspaper, BookOpen, Settings as SettingsIcon, Search, LogOut, Calculator, Dice5 } from 'lucide-react';
 import { NAV_ITEMS } from '../../utils/constants';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { PlayerProfile } from '../../data/types';
@@ -10,6 +10,7 @@ import { useAuth } from '../../hooks/useAuth';
 const ICONS: Record<string, any> = {
   home: House, users: Users, map: Map, trophy: Trophy,
   news: Newspaper, guides: BookOpen, settings: SettingsIcon, calculator: Calculator,
+  dice: Dice5,
 };
 
 const DEFAULT_PROFILE: PlayerProfile = {
@@ -27,19 +28,16 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
   const [profile] = useLocalStorage<PlayerProfile>('ww_profile', DEFAULT_PROFILE);
   const { logout } = useAuth();
   const navigate = useNavigate();
-
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
-
   return (
     <aside
       className={`hidden md:flex flex-col fixed left-4 top-4 bottom-4 rounded-2xl border border-glass-border bg-bg-secondary/60 backdrop-blur-2xl z-40 overflow-hidden transition-[width] duration-300 ease-in-out ${
         collapsed ? 'w-20' : 'w-64'
       }`}
     >
-      {/* Лого */}
       <Link to="/home" className="px-4 lg:px-6 pt-5 pb-4 border-b border-glass-border focus-ring flex items-center justify-center lg:justify-start overflow-hidden">
         <span className={`text-xl font-extrabold text-gradient tracking-tight whitespace-nowrap transition-all duration-200 ${collapsed ? 'w-0 opacity-0 overflow-hidden' : 'opacity-100 delay-150'}`}>
           Stellar Wiki
@@ -48,8 +46,6 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
           S
         </span>
       </Link>
-
-      {/* Поиск */}
       <button
         onClick={onOpenSearch}
         className={`mx-3 lg:mx-4 mt-4 flex items-center px-3 lg:px-4 py-3 rounded-xl bg-glass border border-glass-border text-gray-400 hover:text-ivory hover:border-accent/50 transition-all focus-ring ${
@@ -65,15 +61,12 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
           </>
         )}
       </button>
-
       <p className={`pt-4 pb-2 text-[10px] tracking-[0.25em] text-gray-500 transition-all duration-200 ${collapsed ? 'text-center px-1' : 'px-6 text-left'}`}>
         MENU
       </p>
-
-      {/* Навигация с пружинной пилюлей */}
       <nav className="flex-1 px-3 lg:px-4 space-y-1 overflow-y-auto no-scrollbar overflow-x-hidden">
         {NAV_ITEMS.map((item) => {
-          const Icon = ICONS[item.icon];
+          const Icon = ICONS[item.icon] ?? House;
           return (
             <NavLink
               key={item.id}
@@ -104,8 +97,6 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
           );
         })}
       </nav>
-
-      {/* Карточка игрока + выход */}
       <div className={`mx-3 lg:mx-4 mb-4 flex items-center rounded-xl border border-glass-border bg-glass overflow-hidden ${collapsed ? 'justify-center' : ''}`}>
         <NavLink
           to="/profile"

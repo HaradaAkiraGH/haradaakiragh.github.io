@@ -10,6 +10,7 @@ const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m
 const CharactersPage = lazy(() => import('./pages/CharactersPage').then((m) => ({ default: m.CharactersPage })));
 const CharacterPage = lazy(() => import('./pages/CharacterPage').then((m) => ({ default: m.CharacterPage })));
 const TrainerPage = lazy(() => import('./pages/TrainerPage').then((m) => ({ default: m.TrainerPage })));
+const PullsPage = lazy(() => import('./pages/PullsPage').then((m) => ({ default: m.PullsPage })));
 const MapPage = lazy(() => import('./pages/MapPage').then((m) => ({ default: m.MapPage })));
 const MetaPage = lazy(() => import('./pages/MetaPage').then((m) => ({ default: m.MetaPage })));
 const CalculatorPage = lazy(() => import('./pages/CalculatorPage').then((m) => ({ default: m.CalculatorPage })));
@@ -18,7 +19,6 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ de
 const NewsPage = lazy(() => import('./pages/NewsPage').then((m) => ({ default: m.NewsPage })));
 const GuidesPage = lazy(() => import('./pages/GuidesPage').then((m) => ({ default: m.GuidesPage })));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
-const PullsPage = lazy(() => import('./pages/PullsPage').then((m) => ({ default: m.PullsPage })));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-bg">
@@ -42,11 +42,11 @@ export function App() {
             <Route path="/build/:code" element={<BuildPage />} />
             <Route path="/" element={<Guard />}>
               <Route index element={<Navigate to="/home" replace />} />
-              <Route path="pulls" element={<PullsPage />} />
               <Route path="home" element={<HomePage />} />
               <Route path="characters" element={<CharactersPage />} />
               <Route path="characters/:id" element={<CharacterPage />} />
               <Route path="trainer/:teamId" element={<TrainerPage />} />
+              <Route path="pulls" element={<PullsPage />} />
               <Route path="calculator" element={<CalculatorPage />} />
               <Route path="map" element={<MapPage />} />
               <Route path="meta" element={<MetaPage />} />
