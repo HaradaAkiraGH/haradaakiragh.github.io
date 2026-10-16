@@ -1,8 +1,10 @@
-// Pull Tracker: импорт истории круток, статистика pity, список последних круток
+// Pull Tracker: импорт истории круток, статистика pity, список круток с портретами
 import { useEffect, useState } from 'react';
 import { Link2, Trash2, AlertCircle, Star, Dice5, RefreshCw, HelpCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { apiGetPulls, apiImportPulls, apiDeletePulls, PullsData } from '../utils/api';
+import { ImagePlaceholder } from '../components/ui/ImagePlaceholder';
+import { matchCharacter } from '../utils/pullMatch';
 
 const BANNER_LABELS: Record<string, string> = {
   '1': 'Стандартное соглашение',
@@ -10,7 +12,6 @@ const BANNER_LABELS: Record<string, string> = {
   '3': 'Соглашение с оружием',
   '4': 'Соглашение новичка',
 };
-
 const RARITY_COLORS: Record<number, string> = {
   3: 'text-blue-400',
   4: 'text-purple-400',
@@ -40,7 +41,6 @@ export const PullsPage = () => {
       setLoading(false);
     }
   };
-
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [token]);
 
   const doImport = async () => {
@@ -150,6 +150,7 @@ export const PullsPage = () => {
                 </div>
               );
             }
+            const lastFiveChar = matchCharacter(s.lastFiveName ?? '');
             return (
               <div key={bid} className="glass-panel p-5">
                 <h4 className="font-semibold text-ivory mb-3">{bannerName(bid)}</h4>
@@ -176,7 +177,21 @@ export const PullsPage = () => {
                   </div>
                   <div>
                     <p className="text-gray-500 text-xs">Последняя 5★</p>
-                    <p className="text-ivory truncate">{s.lastFiveName ?? '—'}</p>
+                    {s.lastFiveName ? (
+                      <span className="flex items-center gap-1.5 mt-1 min-w-0">
+                        {lastFiveChar && (
+                          <ImagePlaceholder
+                            id={lastFiveChar.id}
+                            initials={lastFiveChar.name.slice(0, 2)}
+                            element={lastFiveChar.element}
+                            className="w-6 h-8 rounded border border-glass-border shrink-0"
+                          />
+                        )}
+                        <span className="text-ivory truncate">{s.lastFiveName}</span>
+                      </span>
+                    ) : (
+                      <p className="text-ivory">—</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -191,17 +206,32 @@ export const PullsPage = () => {
             <Star size={18} className="text-accent-light" /> Последние крутки
           </h3>
           <div className="space-y-1 max-h-96 overflow-y-auto">
-            {data.pulls.slice(0, 100).map((p) => (
-              <div key={p.id} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-glass-hover transition-colors">
-                <span className="text-xs text-gray-500 font-mono w-10">#{p.pullNumber}</span>
-                <span className={`text-xs font-semibold w-20 shrink-0 ${RARITY_COLORS[p.rarity]}`}>
-                  {'★'.repeat(p.rarity)}
-                </span>
-                <span className="text-sm text-ivory flex-1 truncate">{p.name}</span>
-                <span className="text-xs text-gray-500 shrink-0">{bannerName(p.bannerId)}</span>
-                <span className="text-xs text-gray-600 shrink-0">{new Date(p.time).toLocaleDateString('ru-RU')}</span>
-              </div>
-            ))}
+            {data.pulls.slice(0, 100).map((p) => {
+              const c = matchCharacter(p.name);
+              return (
+                <div key={p.id} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-glass-hover transition-colors">
+                  {c ? (
+                    <ImagePlaceholder
+                      id={c.id}
+                      initials={c.name.slice(0, 2)}
+                      element={c.element}
+                      className="w-7 h-9 rounded-md border border-glass-border shrink-0"
+                    />
+                  ) : (
+                    <span className="w-7 h-9 rounded-md bg-bg-secondary border border-glass-border flex items-center justify-center shrink-0">
+                      <Star size={12} className={RARITY_COLORS[p.rarity]} />
+                    </span>
+                  )}
+                  <span className="text-xs text-gray-500 font-mono w-10">#{p.pullNumber}</span>
+                  <span className={`text-xs font-semibold w-16 shrink-0 ${RARITY_COLORS[p.rarity]}`}>
+                    {'★'.repeat(p.rarity)}
+                  </span>
+                  <span className="text-sm text-ivory flex-1 truncate">{p.name}</span>
+                  <span className="text-xs text-gray-500 shrink-0 hidden sm:inline">{bannerName(p.bannerId)}</span>
+                  <span className="text-xs text-gray-600 shrink-0">{new Date(p.time).toLocaleDateString('ru-RU')}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
