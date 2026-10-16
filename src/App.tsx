@@ -11,6 +11,7 @@ const CharactersPage = lazy(() => import('./pages/CharactersPage').then((m) => (
 const CharacterPage = lazy(() => import('./pages/CharacterPage').then((m) => ({ default: m.CharacterPage })));
 const TrainerPage = lazy(() => import('./pages/TrainerPage').then((m) => ({ default: m.TrainerPage })));
 const PullsPage = lazy(() => import('./pages/PullsPage').then((m) => ({ default: m.PullsPage })));
+const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 const MapPage = lazy(() => import('./pages/MapPage').then((m) => ({ default: m.MapPage })));
 const MetaPage = lazy(() => import('./pages/MetaPage').then((m) => ({ default: m.MetaPage })));
 const CalculatorPage = lazy(() => import('./pages/CalculatorPage').then((m) => ({ default: m.CalculatorPage })));
@@ -47,6 +48,7 @@ export function App() {
               <Route path="characters/:id" element={<CharacterPage />} />
               <Route path="trainer/:teamId" element={<TrainerPage />} />
               <Route path="pulls" element={<PullsPage />} />
+              <Route path="admin" element={<AdminPage />} />
               <Route path="calculator" element={<CalculatorPage />} />
               <Route path="map" element={<MapPage />} />
               <Route path="meta" element={<MetaPage />} />
