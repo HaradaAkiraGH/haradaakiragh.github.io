@@ -1,4 +1,5 @@
-// Мобильный таб-бар: 4 вкладки + «Ещё» со шторкой доп. разделов
+// Мобильный таб-бар: 4 вкладки + «Ещё» со шторкой.
+// Высота и шторка учитывают safe-area (notch / home-индикатор).
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -20,7 +21,7 @@ export const MobileNav = () => {
   const [sheetOpen, setSheetOpen] = useState(false);
   return (
     <>
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-bg-secondary/90 backdrop-blur-xl border-t border-glass-border z-50 flex items-stretch justify-around px-1">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[calc(4rem+env(safe-area-inset-bottom,0px))] pb-[env(safe-area-inset-bottom,0px)] bg-bg-secondary/90 backdrop-blur-xl border-t border-glass-border z-50 flex items-stretch justify-around px-1">
         {MOBILE_NAV_ITEMS.map((item) => {
           const Icon = ICONS[item.icon] ?? House;
           const isMore = item.id === 'more';
@@ -67,10 +68,11 @@ export const MobileNav = () => {
           );
         })}
       </nav>
+      {/* Шторка «Ещё» */}
       {sheetOpen && (
         <div className="md:hidden fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm" onClick={() => setSheetOpen(false)}>
           <div
-            className="absolute bottom-0 left-0 right-0 rounded-t-3xl bg-bg-secondary/95 backdrop-blur-2xl border-t border-glass-border p-4 pb-8 animate-slide-up"
+            className="absolute bottom-0 left-0 right-0 rounded-t-3xl bg-bg-secondary/95 backdrop-blur-2xl border-t border-glass-border p-4 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] animate-slide-up"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">

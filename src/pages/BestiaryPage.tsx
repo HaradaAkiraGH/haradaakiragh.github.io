@@ -1,6 +1,5 @@
-// Бестиарий: двухуровневая картотека.
-// /bestiary — витрина категорий-полок (админ: создать / переименовать / картинка / удалить).
-// /bestiary/:catId — полка с предметами: поиск, сортировка по редкости, админ-CRUD.
+// Бестиарий: двухуровневая картотека (полки категорий + предметы).
+// Мобильный вид: 2 колонки карточек, модалки-bottom-sheet.
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
@@ -16,7 +15,6 @@ import {
 } from '../utils/api';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
-/* ---------- Иконки категорий по смыслу названия (фолбэк без картинки) ---------- */
 const CATEGORY_ALIASES: { keys: string[]; icon: LucideIcon }[] = [
   { keys: ['оружие', 'weapon', 'weapons', 'пушки'], icon: Sword },
   { keys: ['враги', 'enemy', 'enemies', 'босс', 'боссы', 'boss', 'монстр', 'монстры'], icon: Skull },
@@ -73,7 +71,6 @@ const catToForm = (c: BestiaryCategory): CatForm => ({
   sort: String(c.sort ?? 0),
 });
 
-/* Картинка с фолбэком-заглушкой */
 const SafeImage = ({ src, alt, className = '' }: { src: string | null; alt: string; className?: string }) => {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
@@ -85,6 +82,9 @@ const SafeImage = ({ src, alt, className = '' }: { src: string | null; alt: stri
 
 const inputClass = 'w-full bg-bg-secondary border border-glass-border rounded-lg px-3 py-2 text-sm text-ivory focus-ring';
 const labelClass = 'block text-xs text-gray-400 mb-1.5';
+// Обёртка модалок: на телефоне — bottom-sheet, на десктопе — по центру
+const sheetClass = 'fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center sm:p-4';
+const sheetPanel = 'glass-panel w-full max-w-2xl rounded-t-3xl sm:rounded-2xl p-5 sm:p-6 animate-slide-up max-h-[85vh] overflow-y-auto pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] sm:pb-6';
 
 export const BestiaryPage = () => {
   const { catId } = useParams<{ catId: string }>();
@@ -144,7 +144,6 @@ export const BestiaryPage = () => {
       .sort((a, b) => (b.rarity ?? 0) - (a.rarity ?? 0) || a.name.localeCompare(b.name, 'ru'));
   }, [data, current, search]);
 
-  /* ---------- Категории: сохранение и удаление ---------- */
   const saveCat = async () => {
     if (!catForm || !token) return;
     if (!catForm.name.trim()) { setMsg('Название категории обязательно'); return; }
@@ -182,7 +181,6 @@ export const BestiaryPage = () => {
     }
   };
 
-  /* ---------- Предметы: сохранение и удаление ---------- */
   const saveItem = async () => {
     if (!itemForm || !token) return;
     if (!itemForm.category || !itemForm.name.trim()) { setMsg('Категория и название обязательны'); return; }
@@ -228,7 +226,6 @@ export const BestiaryPage = () => {
   const setProp = (i: number, patch: Partial<PropRow>) =>
     setItemForm((f) => (f ? { ...f, props: f.props.map((p, j) => (j === i ? { ...p, ...patch } : p)) } : f));
 
-  /* ---------- Карточка предмета ---------- */
   const renderCard = (e: BestiaryEntry) => (
     <button
       key={e.id}
@@ -240,7 +237,7 @@ export const BestiaryPage = () => {
         <SafeImage src={e.image} alt={e.name} className="w-full h-full transition-transform duration-300 group-hover:scale-105" />
         {!e.image && (
           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a2118] to-[#14100c]">
-            <span className="text-xl font-bold text-accent-light/70">{e.name.slice(0, 2).toUpperCase()}</span>
+            <span className="text-lg sm:text-xl font-bold text-accent-light/70">{e.name.slice(0, 2).toUpperCase()}</span>
           </div>
         )}
         {e.rarity !== null && (
@@ -249,9 +246,9 @@ export const BestiaryPage = () => {
           </span>
         )}
       </div>
-      <div className="p-4">
-        <h4 className="font-semibold text-ivory group-hover:text-accent-light transition-colors truncate">{e.name}</h4>
-        {e.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">{e.description}</p>}
+      <div className="p-3 sm:p-4">
+        <h4 className="font-semibold text-ivory group-hover:text-accent-light transition-colors truncate text-sm sm:text-base">{e.name}</h4>
+        {e.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed hidden sm:block">{e.description}</p>}
         {e.tags && (
           <p className="flex items-center gap-1 text-[10px] text-gray-500 mt-2 truncate">
             <Tag size={10} className="shrink-0" /> {e.tags}
@@ -261,7 +258,6 @@ export const BestiaryPage = () => {
     </button>
   );
 
-  /* ---------- Экран: категория не найдена ---------- */
   if (!loading && catId && !current) {
     return (
       <div className="glass-panel py-16 flex flex-col items-center text-center gap-4">
@@ -278,16 +274,16 @@ export const BestiaryPage = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* ========== ВИТРИНА КАТЕГОРИЙ ========== */}
       {!catId && (
         <>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
             <div>
-              <h2 className="text-3xl font-bold text-ivory flex items-center gap-3">
-                <Archive size={26} className="text-accent-light" /> Бестиарий
+              <h2 className="text-2xl sm:text-3xl font-bold text-ivory flex items-center gap-3">
+                <Archive size={24} className="text-accent-light shrink-0" /> Бестиарий
               </h2>
-              <p className="text-gray-400 mt-1">Полки Соларис-3: выбери категорию и листай её содержимое</p>
+              <p className="text-gray-400 mt-1 text-sm sm:text-base">Полки Соларис-3: выбери категорию и листай её содержимое</p>
             </div>
             {isAdmin && (
               <button
@@ -320,7 +316,7 @@ export const BestiaryPage = () => {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {data!.categories.map((c) => {
                 const Icon = categoryIcon(c.name);
                 const n = countFor(c.name);
@@ -331,16 +327,16 @@ export const BestiaryPage = () => {
                         <SafeImage src={c.image} alt={c.name} className="w-full h-full transition-transform duration-300 group-hover:scale-105" />
                         {!c.image && (
                           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a2118] to-[#14100c]">
-                            <Icon size={40} className="text-accent-light/60" />
+                            <Icon size={36} className="text-accent-light/60" />
                           </div>
                         )}
                         <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/55 backdrop-blur border border-glass-border text-[11px] font-bold text-ivory">
                           {n}
                         </span>
                       </div>
-                      <div className="p-4">
-                        <h3 className="font-bold text-ivory group-hover:text-accent-light transition-colors">{c.name}</h3>
-                        {c.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">{c.description}</p>}
+                      <div className="p-3 sm:p-4">
+                        <h3 className="font-bold text-ivory group-hover:text-accent-light transition-colors truncate">{c.name}</h3>
+                        {c.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed hidden sm:block">{c.description}</p>}
                       </div>
                     </Link>
                     {isAdmin && (
@@ -377,18 +373,18 @@ export const BestiaryPage = () => {
             <ArrowLeft size={18} /> Ко всем категориям
           </Link>
 
-          <div className="glass-panel p-5 flex flex-col md:flex-row gap-5 items-start">
-            <div className="w-24 h-24 rounded-xl border border-glass-border overflow-hidden shrink-0 relative">
+          <div className="glass-panel p-4 sm:p-5 flex flex-col md:flex-row gap-4 sm:gap-5 items-start">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl border border-glass-border overflow-hidden shrink-0 relative">
               <SafeImage src={current.image} alt={current.name} className="w-full h-full" />
               {!current.image && (
                 <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a2118] to-[#14100c]">
-                  {(() => { const Icon = categoryIcon(current.name); return <Icon size={30} className="text-accent-light/60" />; })()}
+                  {(() => { const Icon = categoryIcon(current.name); return <Icon size={28} className="text-accent-light/60" />; })()}
                 </div>
               )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-2xl font-bold text-ivory">{current.name}</h2>
+                <h2 className="text-xl sm:text-2xl font-bold text-ivory">{current.name}</h2>
                 <span className="px-2 py-0.5 rounded-md bg-accent/15 border border-accent/30 text-accent-light text-[11px] font-bold">
                   {countFor(current.name)}
                 </span>
@@ -396,10 +392,10 @@ export const BestiaryPage = () => {
               {current.description && <p className="text-sm text-gray-400 mt-1 leading-relaxed">{current.description}</p>}
             </div>
             {isAdmin && (
-              <div className="flex gap-2 shrink-0">
+              <div className="flex gap-2 shrink-0 w-full md:w-auto">
                 <button
                   onClick={() => { setItemForm({ id: null, category: current.name, name: '', rarity: '', description: '', image: '', tags: '', props: [{ k: '', v: '' }] }); setMsg(null); }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-accent to-accent-light text-bg text-sm font-bold hover:shadow-glow transition-all focus-ring"
+                  className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-accent to-accent-light text-bg text-sm font-bold hover:shadow-glow transition-all focus-ring"
                 >
                   <Plus size={15} /> Добавить предмет
                 </button>
@@ -414,8 +410,8 @@ export const BestiaryPage = () => {
             )}
           </div>
 
-          <div className="glass-panel p-3 flex flex-wrap gap-2 items-center relative z-30">
-            <div className="relative flex-1 min-w-[200px]">
+          <div className="glass-panel p-2.5 sm:p-3 flex flex-wrap gap-2 items-center relative z-30">
+            <div className="relative flex-1 min-w-[160px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
               <input
                 type="text"
@@ -441,7 +437,7 @@ export const BestiaryPage = () => {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-4">
                 {(expanded ? items : items.slice(0, PAGE_SIZE)).map(renderCard)}
               </div>
               {items.length > PAGE_SIZE && (
@@ -457,12 +453,12 @@ export const BestiaryPage = () => {
         </>
       )}
 
-      {/* ========== МОДАЛКА ПРОСМОТРА ПРЕДМЕТА ========== */}
+      {/* ========== МОДАЛКА ПРОСМОТРА (bottom-sheet на мобильном) ========== */}
       {detail && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4" onClick={() => setDetail(null)} role="dialog" aria-modal="true">
-          <div className="glass-panel w-full max-w-2xl p-6 animate-slide-up max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className={sheetClass} onClick={() => setDetail(null)} role="dialog" aria-modal="true">
+          <div className={sheetPanel} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start gap-4 mb-4">
-              <div className="w-24 h-24 rounded-xl border border-glass-border overflow-hidden shrink-0 relative">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl border border-glass-border overflow-hidden shrink-0 relative">
                 <SafeImage src={detail.image} alt={detail.name} className="w-full h-full" />
                 {!detail.image && (
                   <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a2118] to-[#14100c]">
@@ -472,12 +468,16 @@ export const BestiaryPage = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <Link to={`/bestiary/${data?.categories.find((c) => c.name === detail.category)?.id ?? ''}`} onClick={() => setDetail(null)} className="px-2 py-0.5 rounded-md bg-accent/15 border border-accent/30 text-accent-light text-[10px] font-bold uppercase tracking-wider hover:border-accent/60 transition-colors">
+                  <Link
+                    to={`/bestiary/${data?.categories.find((c) => c.name === detail.category)?.id ?? ''}`}
+                    onClick={() => setDetail(null)}
+                    className="px-2 py-0.5 rounded-md bg-accent/15 border border-accent/30 text-accent-light text-[10px] font-bold uppercase tracking-wider hover:border-accent/60 transition-colors"
+                  >
                     {detail.category}
                   </Link>
                   {detail.rarity !== null && <span className="text-yellow-400 text-xs font-bold">{'★'.repeat(detail.rarity)}</span>}
                 </div>
-                <h3 className="text-2xl font-bold text-ivory leading-tight">{detail.name}</h3>
+                <h3 className="text-xl sm:text-2xl font-bold text-ivory leading-tight">{detail.name}</h3>
                 {detail.tags && <p className="flex items-center gap-1 text-xs text-gray-500 mt-1"><Tag size={11} /> {detail.tags}</p>}
               </div>
               <button onClick={() => setDetail(null)} className="p-1.5 rounded-lg text-gray-400 hover:text-ivory focus-ring shrink-0" aria-label="Закрыть">
@@ -486,7 +486,7 @@ export const BestiaryPage = () => {
             </div>
             {detail.description && <p className="text-sm text-gray-300 leading-relaxed mb-4">{detail.description}</p>}
             {Object.keys(detail.props ?? {}).length > 0 && (
-              <div className="grid sm:grid-cols-2 gap-2 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                 {Object.entries(detail.props).map(([k, v]) => (
                   <div key={k} className="p-3 rounded-lg bg-bg-secondary/60 border border-glass-border">
                     <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">{k}</p>
@@ -518,8 +518,8 @@ export const BestiaryPage = () => {
 
       {/* ========== МОДАЛКА ФОРМЫ ПРЕДМЕТА ========== */}
       {itemForm && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4" onClick={() => setItemForm(null)} role="dialog" aria-modal="true">
-          <div className="glass-panel w-full max-w-2xl p-6 animate-slide-up max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className={sheetClass} onClick={() => setItemForm(null)} role="dialog" aria-modal="true">
+          <div className={sheetPanel} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-ivory">{itemForm.id === null ? 'Новый предмет' : 'Правка предмета'}</h3>
               <button onClick={() => setItemForm(null)} className="p-1.5 rounded-lg text-gray-400 hover:text-ivory focus-ring" aria-label="Закрыть">
@@ -531,7 +531,7 @@ export const BestiaryPage = () => {
                 <AlertCircle size={15} className="shrink-0" /> {msg}
               </p>
             )}
-            <div className="grid sm:grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <label className="block">
                 <span className={labelClass}>Категория *</span>
                 <select value={itemForm.category} onChange={(e) => setItemForm({ ...itemForm, category: e.target.value })} className={inputClass}>
@@ -601,8 +601,8 @@ export const BestiaryPage = () => {
 
       {/* ========== МОДАЛКА ФОРМЫ КАТЕГОРИИ ========== */}
       {catForm && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4" onClick={() => setCatForm(null)} role="dialog" aria-modal="true">
-          <div className="glass-panel w-full max-w-lg p-6 animate-slide-up max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className={sheetClass} onClick={() => setCatForm(null)} role="dialog" aria-modal="true">
+          <div className={`${sheetPanel} max-w-lg`} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-ivory">{catForm.id === null ? 'Новая категория' : 'Правка категории'}</h3>
               <button onClick={() => setCatForm(null)} className="p-1.5 rounded-lg text-gray-400 hover:text-ivory focus-ring" aria-label="Закрыть">

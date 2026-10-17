@@ -1,4 +1,5 @@
-// Каркас: живой фон, сворачиваемый сайдбар с кнопкой-«ушком», контент, таб-бар, поиск, хоткеи
+// Каркас: живой фон, сворачиваемый сайдбар с кнопкой-«ушком», контент,
+// таб-бар, поиск, хоткеи. Мобильные отступы учитывают safe-area.
 import { useEffect, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { ChevronsLeft, ChevronsRight } from 'lucide-react';
@@ -57,7 +58,6 @@ export const Layout = () => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setIsSearchOpen(true);
@@ -70,7 +70,6 @@ export const Layout = () => {
       }
       if (typing) return;
       if (document.body.dataset.trainer === 'on') return;
-
       if (e.key === '?') {
         setIsHelpOpen((v) => !v);
         return;
@@ -87,10 +86,8 @@ export const Layout = () => {
   return (
     <div className="min-h-screen flex">
       <BackgroundFX />
-
       <Sidebar onOpenSearch={() => setIsSearchOpen(true)} collapsed={collapsed} />
-
-      {/* Кнопка-«ушко» на кромке сайдбара: ездит вместе с шириной */}
+      {/* Кнопка-«ушко» на кромке сайдбара */}
       <button
         onClick={() => setCollapsed(!collapsed)}
         className={`hidden md:flex fixed top-1/2 -translate-y-1/2 z-50 w-7 h-7 rounded-full bg-bg-secondary border border-glass-border items-center justify-center text-gray-400 hover:text-accent-light hover:border-accent/50 shadow-lg transition-[left] duration-300 ease-in-out focus-ring ${
@@ -101,18 +98,17 @@ export const Layout = () => {
       >
         {collapsed ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
       </button>
-
-      {/* Контент: отступ синхронно анимируется с шириной сайдбара */}
+      {/* min-w-0: разрешаем контентной колонке сжиматься до ширины экрана,
+          иначе широкие nowrap-ленты (вкладки, таймлайны) распирают всю страницу */}
       <main
-        className={`relative z-10 flex-1 pb-20 md:pb-0 min-h-screen transition-[margin-left] duration-300 ease-in-out ${
+        className={`relative z-10 flex-1 min-w-0 min-h-screen pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] md:pb-0 transition-[margin-left] duration-300 ease-in-out ${
           collapsed ? 'md:ml-28' : 'md:ml-72'
         }`}
       >
-        <div className="max-w-7xl mx-auto p-4 md:p-8 animate-fade-in">
+        <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-8 animate-fade-in">
           <Outlet />
         </div>
       </main>
-
       <MobileNav />
       <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
       <HotkeysModal open={isHelpOpen} onClose={() => setIsHelpOpen(false)} />

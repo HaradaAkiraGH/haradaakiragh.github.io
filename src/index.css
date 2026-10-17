@@ -1,6 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;600;700;800&display=swap');
 @import 'leaflet/dist/leaflet.css';
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -9,6 +8,15 @@
 :root {
   --accent: 202 160 125;
   --accent-light: 230 201 168;
+}
+
+/* ---------- Мобильная база ---------- */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 
 @layer base {
@@ -35,6 +43,19 @@
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  /* Safe-area (notch / home-индикатор) */
+  .safe-pb { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .safe-pt { padding-top: env(safe-area-inset-top, 0px); }
+  /* Минимальная комфортная зона нажатия */
+  .tap-44 { min-height: 44px; }
+}
+
+/* На тач-экранах hover не залипал */
+@media (hover: none) {
+  .glass-panel-hover:hover {
+    transform: none;
+    box-shadow: none;
+  }
 }
 
 /* ---------- Появление ---------- */
@@ -51,11 +72,9 @@
 }
 .aurora-drift { animation: auroraDrift 46s ease-in-out infinite alternate; }
 .aurora-drift-slow { animation: auroraDrift 64s ease-in-out infinite alternate-reverse; }
-
 @keyframes rayShimmer { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
 .ray-shimmer { animation: rayShimmer 9s ease-in-out infinite; }
 .ray-shimmer-slow { animation: rayShimmer 14s ease-in-out infinite 2s; }
-
 .dust { background-repeat: repeat; }
 .dust-a {
   background-image: radial-gradient(rgba(230, 201, 168, 0.35) 1px, transparent 1.4px);
@@ -73,15 +92,21 @@
   from { background-position: 0 0; }
   to   { background-position: 220px -440px; }
 }
-
 .noise {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
   opacity: 0.05;
   mix-blend-mode: overlay;
 }
-
 .vignette {
   background: radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(5, 5, 7, 0.55) 100%);
+}
+
+/* Мобильная экономия батареи и FPS: пыль убираем, виньетку смягчаем */
+@media (max-width: 640px) {
+  .dust-a, .dust-b { display: none; }
+  .vignette {
+    background: radial-gradient(ellipse at 50% 40%, transparent 68%, rgba(5, 5, 7, 0.38) 100%);
+  }
 }
 
 /* ---------- Leaflet: тёмная тема + акцентная кнопка в попапах ---------- */

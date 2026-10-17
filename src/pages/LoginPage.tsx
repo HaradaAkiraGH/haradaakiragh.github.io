@@ -1,4 +1,4 @@
-// Вход и регистрация; если уже залогинен — аккуратный <Navigate>, без падений
+// Вход и регистрация; мобильные паддинги карточки; аккуратный <Navigate>
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, UserRound, AlertCircle } from 'lucide-react';
@@ -9,7 +9,6 @@ export const LoginPage = () => {
   useDocumentMeta({ title: 'Вход', description: 'Войди или создай аккаунт Stellar Wiki.' });
   const { login, register, demo, ready, user } = useAuth();
   const navigate = useNavigate();
-
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,7 +18,6 @@ export const LoginPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Уже залогинен — мягко уводим на Главную
   if (ready && user) {
     return <Navigate to="/home" replace />;
   }
@@ -27,12 +25,10 @@ export const LoginPage = () => {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
     if (mode === 'register' && password !== confirm) {
       setError('Пароли не совпадают');
       return;
     }
-
     setBusy(true);
     try {
       if (mode === 'login') {
@@ -47,25 +43,21 @@ export const LoginPage = () => {
       setBusy(false);
     }
   };
-
   const inputClass =
     'w-full bg-bg-secondary/80 border border-glass-border rounded-xl pl-10 pr-10 py-3 text-sm text-ivory placeholder-gray-500 focus-ring';
-
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div className="absolute -top-32 right-[-5%] w-[480px] h-[140%] rotate-[25deg] bg-gradient-to-b from-accent/[0.08] to-transparent blur-2xl" />
         <div className="absolute bottom-[-20%] left-[-10%] w-[520px] h-[520px] rounded-full bg-accent/10 blur-[140px]" />
       </div>
-
-      <div className="relative w-full max-w-md glass-panel rounded-3xl p-8 backdrop-blur-2xl animate-slide-up">
+      <div className="relative w-full max-w-md glass-panel rounded-3xl p-6 sm:p-8 backdrop-blur-2xl animate-slide-up">
         {demo && (
           <p className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-200 text-xs text-center">
             Демо-режим: облачный API не подключён, вход принимает любые данные
           </p>
         )}
-
-        <h1 className="text-3xl font-extrabold text-ivory text-center">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-ivory text-center">
           {mode === 'login' ? (
             <>С возвращением, <span className="text-gradient">Rover</span></>
           ) : (
@@ -77,13 +69,11 @@ export const LoginPage = () => {
             ? 'Войди, чтобы продолжить путь по Соларис-3'
             : 'Создай аккаунт резонатора: email, пароль и позывной'}
         </p>
-
         {error && (
           <p className="mt-4 flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
             <AlertCircle size={15} className="shrink-0" /> {error}
           </p>
         )}
-
         <form onSubmit={submit} className="mt-6 space-y-4">
           {mode === 'register' && (
             <div>
@@ -101,7 +91,6 @@ export const LoginPage = () => {
               </div>
             </div>
           )}
-
           <div>
             <label className="block text-xs text-gray-400 mb-1.5" htmlFor="email">Email</label>
             <div className="relative">
@@ -117,7 +106,6 @@ export const LoginPage = () => {
               />
             </div>
           </div>
-
           <div>
             <label className="block text-xs text-gray-400 mb-1.5" htmlFor="password">Пароль</label>
             <div className="relative">
@@ -141,7 +129,6 @@ export const LoginPage = () => {
               </button>
             </div>
           </div>
-
           {mode === 'register' && (
             <div>
               <label className="block text-xs text-gray-400 mb-1.5" htmlFor="confirm">Повтори пароль</label>
@@ -159,7 +146,6 @@ export const LoginPage = () => {
               </div>
             </div>
           )}
-
           <button
             type="submit"
             disabled={busy}
@@ -169,7 +155,6 @@ export const LoginPage = () => {
             {!busy && <ArrowRight size={18} />}
           </button>
         </form>
-
         <p className="text-center text-sm text-gray-400 mt-6">
           {mode === 'login' ? 'Нет аккаунта?' : 'Уже есть аккаунт?'}{' '}
           <button

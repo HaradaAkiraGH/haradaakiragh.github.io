@@ -1,5 +1,6 @@
-// Интерактивная карта: тайлы Хуанлуна с CDN, маркеры-иконки, плавающий HUD,
-// прогресс в localStorage, режим расстановки координат. Без смайликов.
+// Интерактивная карта: тайлы Хуанлуна с CDN, маркеры-иконки, плавающий HUD.
+// Мобильный вид: HUD — нижняя шторка до 45% экрана, панель координат сверху,
+// высота карты учитывает safe-area таб-бара.
 import { useEffect, useState } from 'react';
 import { MapContainer, Marker, Popup, Tooltip, ImageOverlay, useMap, useMapEvents } from 'react-leaflet';
 import * as L from 'leaflet';
@@ -19,21 +20,10 @@ interface RegionConfig {
   center: [number, number];
   image?: string;
 }
-
 const REGIONS: Record<'Huanglong' | 'Rinata', RegionConfig> = {
-  Huanglong: {
-    label: 'Хуанлон',
-    bounds: huanglongBounds,
-    center: [-0.5, -0.5],
-  },
-  Rinata: {
-    label: 'Рината',
-    bounds: [[-6, -6], [6, 6]],
-    center: [-0.5, -0.5],
-    image: '/maps/rinata.png',
-  },
+  Huanglong: { label: 'Хуанлон', bounds: huanglongBounds, center: [-0.5, -0.5] },
+  Rinata: { label: 'Рината', bounds: [[-6, -6], [6, 6]], center: [-0.5, -0.5], image: '/maps/rinata.png' },
 };
-
 type RegionId = keyof typeof REGIONS;
 
 const RegionController = ({ region }: { region: RegionId }) => {
@@ -43,7 +33,6 @@ const RegionController = ({ region }: { region: RegionId }) => {
   }, [region, map]);
   return null;
 };
-
 const MapClickCatcher = ({ onPick }: { onPick: (lat: number, lng: number) => void }) => {
   useMapEvents({
     click(e) {
@@ -52,7 +41,6 @@ const MapClickCatcher = ({ onPick }: { onPick: (lat: number, lng: number) => voi
   });
   return null;
 };
-
 const MapRefSetter = ({ onMap }: { onMap: (m: L.Map) => void }) => {
   const map = useMap();
   useEffect(() => {
@@ -60,12 +48,11 @@ const MapRefSetter = ({ onMap }: { onMap: (m: L.Map) => void }) => {
   }, [map, onMap]);
   return null;
 };
-
 const ZoomButtons = ({ map, region, editMode, setEditMode }: { map: L.Map | null; region: RegionId; editMode: boolean; setEditMode: (v: boolean) => void }) => {
   const btn = 'w-9 h-9 rounded-lg bg-bg-secondary/90 border border-glass-border text-white hover:border-accent/50 flex items-center justify-center focus-ring';
   return (
     <div className="absolute top-3 right-3 z-[500] flex flex-col gap-2">
-      <button className={btn} onClick={() => setEditMode(!editMode)} title="Режим расстановки: клик по карте даст координаты для map.ts" aria-label="Режим расстановки маркеров">
+      <button className={btn} onClick={() => setEditMode(!editMode)} title="Режим расстановки: клик по карте даст координаты" aria-label="Режим расстановки маркеров">
         <Crosshair size={16} className={editMode ? 'text-accent-light' : ''} />
       </button>
       <button className={btn} onClick={() => map?.zoomIn()} aria-label="Приблизить"><Plus size={16} /></button>
@@ -74,7 +61,6 @@ const ZoomButtons = ({ map, region, editMode, setEditMode }: { map: L.Map | null
     </div>
   );
 };
-
 const markerIcon = (type: MapMarkerType, isDone: boolean) =>
   L.divIcon({
     className: 'ww-marker',
@@ -92,14 +78,11 @@ export const MapPage = () => {
   const [region, setRegion] = useState<RegionId>('Huanglong');
   const [activeTypes, setActiveTypes] = useState<MapMarkerType[]>(ALL_TYPES);
   const [hideCollected, setHideCollected] = useState(false);
-
   const [editMode, setEditMode] = useState(false);
   const [picked, setPicked] = useState<[number, number] | null>(null);
   const [copied, setCopied] = useState(false);
   const [map, setMap] = useState<L.Map | null>(null);
-
   const [hudOpen, setHudOpen] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
-
   const [hasImage, setHasImage] = useState<Record<string, boolean>>({});
   useEffect(() => {
     (Object.keys(REGIONS) as RegionId[]).forEach((r) => {
@@ -108,34 +91,28 @@ export const MapPage = () => {
       fetch(img).then((res) => setHasImage((p) => ({ ...p, [r]: res.ok }))).catch(() => {});
     });
   }, []);
-
   const toggleCollected = (id: string) => {
     setCollected(collected.includes(id) ? collected.filter((c) => c !== id) : [...collected, id]);
   };
-
   const toggleType = (t: MapMarkerType) => {
     setActiveTypes(activeTypes.includes(t) ? activeTypes.filter((x) => x !== t) : [...activeTypes, t]);
   };
-
   const copyPicked = async () => {
     if (!picked) return;
     await navigator.clipboard.writeText(`[${picked[0]}, ${picked[1]}]`);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
-
   const visible = MAP_MARKERS.filter((m) => {
     if (m.region !== region) return false;
     if (!activeTypes.includes(m.type)) return false;
     if (hideCollected && collected.includes(m.id)) return false;
     return true;
   });
-
   const regionMarkers = MAP_MARKERS.filter((m) => m.region === region);
   const regionCollected = regionMarkers.filter((m) => collected.includes(m.id)).length;
-
   return (
-    <div className="relative h-[calc(100vh-6rem)] md:h-[calc(100vh-4rem)]">
+    <div className="relative h-[calc(100vh-6rem-env(safe-area-inset-bottom,0px))] md:h-[calc(100vh-4rem)]">
       {/* Карта на всю область */}
       <div className="absolute inset-0 glass-panel overflow-hidden">
         <MapContainer
@@ -151,12 +128,10 @@ export const MapPage = () => {
           <RegionController region={region} />
           <MapClickCatcher onPick={(lat, lng) => { if (editMode) setPicked([lat, lng]); }} />
           <MapRefSetter onMap={setMap} />
-
           {region === 'Huanglong' && <TilesLayer />}
           {region === 'Rinata' && hasImage.Rinata && REGIONS.Rinata.image && (
             <ImageOverlay url={REGIONS.Rinata.image} bounds={REGIONS.Rinata.bounds} />
           )}
-
           {visible.map((m) => {
             const isDone = collected.includes(m.id);
             return (
@@ -186,13 +161,11 @@ export const MapPage = () => {
             );
           })}
         </MapContainer>
-
         <ZoomButtons map={map} region={region} editMode={editMode} setEditMode={setEditMode} />
       </div>
-
-      {/* Плавающий HUD поверх карты */}
+      {/* HUD: на телефоне — нижняя шторка, на десктопе — левая колонка */}
       {hudOpen ? (
-        <div className="absolute top-4 bottom-4 left-4 z-[550] w-72 max-w-[85vw] glass-panel p-4 flex flex-col gap-5 overflow-y-auto animate-fade-in">
+        <div className="absolute z-[550] glass-panel p-4 flex flex-col gap-4 overflow-y-auto animate-fade-in left-4 right-4 bottom-4 max-h-[45vh] lg:left-4 lg:right-auto lg:top-4 lg:bottom-4 lg:max-h-none lg:w-72 lg:max-w-[85vw] lg:gap-5">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-ivory">Фильтры карты</h3>
             <button
@@ -203,7 +176,6 @@ export const MapPage = () => {
               <X size={16} />
             </button>
           </div>
-
           <div>
             <p className="text-xs text-gray-500 uppercase font-semibold mb-2">Регион</p>
             <div className="flex gap-2">
@@ -220,7 +192,6 @@ export const MapPage = () => {
               ))}
             </div>
           </div>
-
           <div>
             <p className="text-xs text-gray-500 uppercase font-semibold mb-2">Типы объектов</p>
             <div className="space-y-2">
@@ -238,12 +209,10 @@ export const MapPage = () => {
               })}
             </div>
           </div>
-
           <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-ivory transition-colors">
             <input type="checkbox" checked={hideCollected} onChange={(e) => setHideCollected(e.target.checked)} className="rounded" />
             Скрыть собранные
           </label>
-
           <div className="mt-auto pt-4 border-t border-glass-border">
             <p className="text-sm text-gray-400 mb-2">Собрано в регионе: <span className="text-ivory font-semibold">{regionCollected}</span> / {regionMarkers.length}</p>
             <div className="h-2 rounded-full bg-bg-secondary overflow-hidden">
@@ -261,15 +230,14 @@ export const MapPage = () => {
           <SlidersHorizontal size={18} />
         </button>
       )}
-
-      {/* Панель координат режима расстановки */}
+      {/* Панель координат: на телефоне сверху (низ занят HUD-шторкой), на десктопе снизу */}
       {editMode && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[550] glass-panel p-3 flex items-center gap-3 animate-fade-in">
-          <span className="text-xs text-gray-400">Кликни по карте →</span>
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[550] glass-panel p-3 flex items-center gap-3 animate-fade-in lg:top-auto lg:bottom-4 max-w-[92vw]">
+          <span className="text-xs text-gray-400 shrink-0">Кликни по карте →</span>
           {picked ? (
             <>
-              <code className="text-sm text-accent-light font-mono">position: [{picked[0]}, {picked[1]}]</code>
-              <button onClick={copyPicked} className="p-1.5 rounded-lg bg-glass border border-glass-border hover:border-accent/50 focus-ring" aria-label="Скопировать координаты">
+              <code className="text-sm text-accent-light font-mono truncate">{`position: [${picked[0]}, ${picked[1]}]`}</code>
+              <button onClick={copyPicked} className="p-1.5 rounded-lg bg-glass border border-glass-border hover:border-accent/50 focus-ring shrink-0" aria-label="Скопировать координаты">
                 {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} className="text-gray-300" />}
               </button>
             </>
