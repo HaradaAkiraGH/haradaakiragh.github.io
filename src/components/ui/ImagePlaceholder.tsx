@@ -1,5 +1,7 @@
-// Показывает реальную картинку, если её URL есть в images.ts.
+// Показывает реальную картинку, если её путь есть в images.ts.
 // Иначе — градиентную заглушку с инициалами (никаких битых ссылок).
+// loading="lazy" + decoding="async": на телефоне арты грузятся по мере
+// скролла, а не все 61 разом (память и сеть больше не душат рендер).
 import { useState } from 'react';
 import { IMAGES } from '../../data/images';
 
@@ -22,11 +24,18 @@ interface Props {
 export const ImagePlaceholder = ({ id, initials, element, className = '' }: Props) => {
   const [failed, setFailed] = useState(false);
   const src = IMAGES[id];
-
   if (src && !failed) {
-    return <img src={src} alt={initials} onError={() => setFailed(true)} className={`object-cover ${className}`} />;
+    return (
+      <img
+        src={src}
+        alt={initials}
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+        className={`object-cover ${className}`}
+      />
+    );
   }
-
   return (
     <div
       className={`flex items-center justify-center bg-gradient-to-br ${GRADIENTS[element] ?? 'from-gray-700 to-gray-900'} ${className}`}

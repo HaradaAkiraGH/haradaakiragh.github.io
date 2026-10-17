@@ -23,7 +23,8 @@ html {
   body {
     @apply bg-bg text-ivory font-sans antialiased overflow-x-hidden;
     background-image: linear-gradient(160deg, #0d0d0f 0%, #101014 60%, #0d0d0f 100%);
-    background-attachment: fixed;
+    /* background-attachment: fixed УБРАН: на телефонах он заставляет
+       перерисовывать весь градиент на каждый кадр скролла */
   }
   ::selection { @apply bg-accent/40 text-white; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -55,6 +56,25 @@ html {
   .glass-panel-hover:hover {
     transform: none;
     box-shadow: none;
+  }
+}
+
+/* ---------- МОБИЛЬНАЯ ПРОИЗВОДИТЕЛЬНОСТЬ ---------- */
+/* backdrop-filter — главный пожиратель FPS: 61 стеклянная карточка каталога
+   заставляли телефон пересчитывать размытие на каждый кадр скролла.
+   На телефонах стекло становится полуплотным без blur — выглядит почти так же. */
+@media (max-width: 768px) {
+  .glass-panel,
+  .glass-panel-hover,
+  .backdrop-blur-md,
+  .backdrop-blur-xl,
+  .backdrop-blur-2xl {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .glass-panel,
+  .glass-panel-hover {
+    background-color: rgba(18, 18, 20, 0.88);
   }
 }
 
