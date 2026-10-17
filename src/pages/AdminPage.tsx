@@ -1,5 +1,6 @@
 // Админка: редактор карточек персонажей (правки поверх бандла).
-// Хранится в таблице character_edits, применяется у всех при старте сайта (src/data/overrides.ts).
+// Хранится в таблице character_edits, применяется у всех при старте сайта.
+// Новые поля (release, skills, constellations, targetStats, skillPriority) правятся здесь же.
 import { useEffect, useState } from 'react';
 import { ShieldCheck, Save, RotateCcw, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { CHARACTERS } from '../data/characters';
@@ -13,10 +14,30 @@ const ROLE_OPTIONS = ['Main DPS', 'Sub DPS', 'Support', 'Healer', 'Defender'];
 const TIER_OPTIONS = ['S', 'A', 'B', 'C', '-'];
 const RARITY_OPTIONS = ['4', '5'];
 
+const JSON_KEYS = [
+  'echoSets', 'weapons', 'rotation', 'teams', 'materials',
+  'skills', 'constellations', 'targetStats', 'skillPriority',
+] as const;
+type JsonKey = (typeof JSON_KEYS)[number];
+
+const JSON_LABELS: Record<JsonKey, string> = {
+  echoSets: 'Эхо-наборы',
+  weapons: 'Оружие',
+  rotation: 'Ротация',
+  teams: 'Команды',
+  materials: 'Материалы',
+  skills: 'Навыки (вкладка Инфо)',
+  constellations: 'Резонансные цепи (вкладка Инфо)',
+  targetStats: 'Целевые статы (вкладка Билд)',
+  skillPriority: 'Приоритет навыков (вкладка Прокачка)',
+};
+
 interface FormState {
   title: string; role: string; rarity: string; element: string; weapon: string;
   tower: string; realm: string; strengths: string; weaknesses: string;
+  releasePatch: string; releaseDate: string;
   echoSets: string; weapons: string; rotation: string; teams: string; materials: string;
+  skills: string; constellations: string; targetStats: string; skillPriority: string;
 }
 
 const loadForm = (c: any): FormState => ({
@@ -29,11 +50,17 @@ const loadForm = (c: any): FormState => ({
   realm: c.metaRating?.realm ?? '-',
   strengths: (c.strengths ?? []).join('\n'),
   weaknesses: (c.weaknesses ?? []).join('\n'),
+  releasePatch: c.release?.patch ?? '',
+  releaseDate: c.release?.date ?? '',
   echoSets: JSON.stringify(c.echoSets ?? [], null, 2),
   weapons: JSON.stringify(c.weapons ?? [], null, 2),
   rotation: JSON.stringify(c.rotation ?? [], null, 2),
   teams: JSON.stringify(c.teams ?? [], null, 2),
   materials: JSON.stringify(c.materials ?? [], null, 2),
+  skills: JSON.stringify(c.skills ?? [], null, 2),
+  constellations: JSON.stringify(c.constellations ?? [], null, 2),
+  targetStats: JSON.stringify(c.targetStats ?? [], null, 2),
+  skillPriority: JSON.stringify(c.skillPriority ?? [], null, 2),
 });
 
 const lines = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean);
@@ -82,11 +109,11 @@ export const AdminPage = () => {
     setMsg(null);
     try {
       const parsed: Record<string, unknown> = {};
-      for (const key of ['echoSets', 'weapons', 'rotation', 'teams', 'materials'] as const) {
+      for (const key of JSON_KEYS) {
         try {
           parsed[key] = JSON.parse(form[key] || '[]');
         } catch {
-          setMsg({ kind: 'err', text: `Поле «${key}» — невалидный JSON, проверь скобки и запятые` });
+          setMsg({ kind: 'err', text: `Поле «${JSON_LABELS[key]}» — невалидный JSON, проверь скобки и запятые` });
           setBusy(false);
           return;
         }
@@ -102,7 +129,13 @@ export const AdminPage = () => {
         weaknesses: lines(form.weaknesses),
         ...parsed,
       };
+      if (form.releasePatch.trim()) {
+        patch.release = { patch: form.releasePatch.trim(), date: form.releaseDate.trim() || undefined };
+      }
       await apiSaveCharacterOverride(token, selectedId, patch);
+      // Синхронизируем каталог в памяти, чтобы редактор сразу видел свои правки
+      const target = CHARACTERS.find((x) => x.id === selectedId);
+      if (target) Object.assign(target, patch);
       const r = await apiGetCharacterOverrides();
       setOverrideIds(r.overrides.map((o) => o.id));
       setMsg({ kind: 'ok', text: 'Сохранено. На сайте изменения появятся после обновления страницы (F5) — у всех посетителей.' });
@@ -201,10 +234,18 @@ export const AdminPage = () => {
               </select>
             </label>
             <label className="block">
-              <span className={labelClass}>Тир: Царство</span>
+              <span className={labelClass}>Тир: Wastes</span>
               <select value={form.realm} onChange={(e) => set({ realm: e.target.value })} className={inputClass}>
                 {TIER_OPTIONS.map((x) => <option key={x} value={x}>{x}</option>)}
               </select>
+            </label>
+            <label className="block">
+              <span className={labelClass}>Выход: патч</span>
+              <input value={form.releasePatch} onChange={(e) => set({ releasePatch: e.target.value })} placeholder="например 1.4" className={inputClass} />
+            </label>
+            <label className="block">
+              <span className={labelClass}>Выход: дата (необязательно)</span>
+              <input value={form.releaseDate} onChange={(e) => set({ releaseDate: e.target.value })} placeholder="2024-11-28" className={inputClass} />
             </label>
           </div>
 
@@ -220,18 +261,17 @@ export const AdminPage = () => {
           </div>
 
           <div className="glass-panel p-5 space-y-4">
-            <p className="text-sm font-semibold text-ivory">Глубокие данные (JSON — аккуратно со скобками)</p>
-            {([
-              ['echoSets', 'Эхо-наборы'],
-              ['weapons', 'Оружие'],
-              ['rotation', 'Ротация'],
-              ['teams', 'Команды'],
-              ['materials', 'Материалы'],
-            ] as const).map(([key, label]) => (
+            <div>
+              <p className="text-sm font-semibold text-ivory">Глубокие данные (JSON)</p>
+              <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                {'Форматы: skills: [{"name","type","description"}] · constellations: [{"name","effect"}] · targetStats: [{"label","value"}] · skillPriority: [{"name","note"}]. Остальное — как раньше. Пустой массив [] = раздел на сайте покажет заглушку.'}
+              </p>
+            </div>
+            {JSON_KEYS.map((key) => (
               <label className="block" key={key}>
-                <span className={labelClass}>{label}</span>
+                <span className={labelClass}>{JSON_LABELS[key]}</span>
                 <textarea
-                  rows={6}
+                  rows={5}
                   value={form[key]}
                   onChange={(e) => set({ [key]: e.target.value } as Partial<FormState>)}
                   className={`${inputClass} font-mono text-xs`}

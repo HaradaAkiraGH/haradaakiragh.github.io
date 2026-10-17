@@ -3,10 +3,33 @@ export type ElementType = 'Spectro' | 'Havoc' | 'Fusion' | 'Glacio' | 'Electro' 
 export type WeaponType = 'Sword' | 'Broadblade' | 'Pistol' | 'Gauntlets' | 'Rectifier';
 export type Rarity = 4 | 5;
 export type CharacterRole = 'Main DPS' | 'Sub DPS' | 'Support' | 'Healer' | 'Defender';
-export type GameMode = 'Tower of Adversity' | 'Illusory Realm' | 'General';
+export type GameMode = 'Tower of Adversity' | 'Whimpering Wastes' | 'General';
 // '-' используется для персонажей, у которых мета-рейтинг ещё не определён
 export type Tier = 'S' | 'A' | 'B' | 'C' | '-';
 export type MapMarkerType = 'chest' | 'puzzle' | 'resource' | 'echo' | 'boss' | 'viewpoint';
+
+/* ---------- Новые блоки страницы персонажа ---------- */
+export interface ReleaseInfo {
+  patch: string;      // например '1.0', '2.3'
+  date?: string;      // дата выхода патча (опционально)
+}
+export interface SkillInfo {
+  name: string;
+  type: string;       // Resonance Skill / Liberation / Intro / Outro / Forte
+  description: string;
+}
+export interface ConstellationInfo {
+  name: string;       // название резонансной цепи
+  effect: string;     // что даёт
+}
+export interface TargetStat {
+  label: string;      // Crit Rate, ATK, Energy Regen...
+  value: string;      // '70%+', '2200+'...
+}
+export interface SkillPriority {
+  name: string;       // какой навык качать
+  note?: string;      // комментарий
+}
 
 export interface Character {
   id: string;
@@ -24,6 +47,12 @@ export interface Character {
   rotation: RotationStep[];
   teams: TeamComposition[];
   materials: MaterialCategory[];
+  // Опциональные блоки новых вкладок (наполняются волнами/админкой):
+  release?: ReleaseInfo;
+  skills?: SkillInfo[];
+  constellations?: ConstellationInfo[];
+  targetStats?: TargetStat[];
+  skillPriority?: SkillPriority[];
 }
 
 export interface EchoSet {
