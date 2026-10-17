@@ -2,7 +2,10 @@
 // пункт «Админка» только для роли admin
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { House, Users, Map, Trophy, Newspaper, BookOpen, Settings as SettingsIcon, Search, LogOut, Calculator, Dice5, ShieldCheck } from 'lucide-react';
+import {
+  House, Users, Map, Trophy, Newspaper, BookOpen, Settings as SettingsIcon,
+  Search, LogOut, Calculator, Dice5, Skull, ShieldCheck,
+} from 'lucide-react';
 import { NAV_ITEMS } from '../../utils/constants';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { PlayerProfile } from '../../data/types';
@@ -11,7 +14,7 @@ import { useAuth } from '../../hooks/useAuth';
 const ICONS: Record<string, any> = {
   home: House, users: Users, map: Map, trophy: Trophy,
   news: Newspaper, guides: BookOpen, settings: SettingsIcon, calculator: Calculator,
-  dice: Dice5,
+  dice: Dice5, bestiary: Skull,
 };
 
 const DEFAULT_PROFILE: PlayerProfile = {
@@ -71,7 +74,7 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
       </p>
       <nav className="flex-1 px-3 lg:px-4 space-y-1 overflow-y-auto no-scrollbar overflow-x-hidden">
         {NAV_ITEMS.map((item) => {
-          const Icon = ICONS[item.icon];
+          const Icon = ICONS[item.icon] ?? House;
           return (
             <NavLink
               key={item.id}
@@ -101,7 +104,6 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
             </NavLink>
           );
         })}
-        {/* Пункт только для админа */}
         {user?.role === 'admin' && (
           <NavLink
             to="/admin"

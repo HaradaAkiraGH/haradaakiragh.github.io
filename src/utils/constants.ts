@@ -5,7 +5,8 @@ import { ElementType, MapMarkerType, Tier, WeaponType } from '../data/types';
 export const NAV_ITEMS = [
   { id: 'home', label: 'Главная', icon: 'home', path: '/home' },
   { id: 'characters', label: 'Персонажи', icon: 'users', path: '/characters' },
-  { id: 'pulls', label: 'Крутки', icon: 'dice', path: '/pulls' }, // Добавил пункт меню для трекера
+  { id: 'bestiary', label: 'Бестиарий', icon: 'bestiary', path: '/bestiary' },
+  { id: 'pulls', label: 'Крутки', icon: 'dice', path: '/pulls' },
   { id: 'map', label: 'Карта', icon: 'map', path: '/map' },
   { id: 'meta', label: 'Мета', icon: 'trophy', path: '/meta' },
   { id: 'calculator', label: 'Калькулятор', icon: 'calculator', path: '/calculator' },
@@ -14,7 +15,7 @@ export const NAV_ITEMS = [
   { id: 'settings', label: 'Настройки', icon: 'settings', path: '/settings' },
 ];
 
-// Мобильный таб-бар
+// Мобильный таб-бар: 4 вкладки + «Ещё»
 export const MOBILE_NAV_ITEMS = [
   { id: 'home', label: 'Дом', icon: 'home', path: '/home' },
   { id: 'characters', label: 'Персы', icon: 'users', path: '/characters' },
@@ -25,6 +26,7 @@ export const MOBILE_NAV_ITEMS = [
 
 // Шторка «Ещё»
 export const MORE_ITEMS = [
+  { id: 'bestiary', label: 'Бестиарий', icon: 'bestiary', path: '/bestiary' },
   { id: 'pulls', label: 'Крутки', icon: 'dice', path: '/pulls' },
   { id: 'calculator', label: 'Калькулятор', icon: 'calculator', path: '/calculator' },
   { id: 'profile', label: 'Профиль', icon: 'user', path: '/profile' },
@@ -74,13 +76,12 @@ export const MARKER_TYPES: Record<MapMarkerType, { label: string; color: string;
   viewpoint: { label: 'Точки обзора',  color: '#06b6d4', icon: '/icons/z4.png'  },
 };
 
-// ⚠️ ИСПРАВЛЕНИЕ: добавлен стиль для тира '-' (нейтральный серый)
 export const TIER_STYLES: Record<Tier, string> = {
   S: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/40',
   A: 'bg-purple-500/15 text-purple-300 border-purple-500/40',
   B: 'bg-blue-500/15 text-blue-300 border-blue-500/40',
   C: 'bg-gray-500/15 text-gray-300 border-gray-500/40',
-  '-': 'bg-gray-800/30 text-gray-500 border-gray-700/40', 
+  '-': 'bg-gray-800/30 text-gray-500 border-gray-700/40',
 };
 
 export interface CharacterTheme {

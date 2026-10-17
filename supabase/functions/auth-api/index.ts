@@ -1,5 +1,5 @@
 // @ts-nocheck — Deno (Supabase Edge)
-// Stellar Wiki API: auth + профиль/ростер + pull tracker + правки карточек (admin)
+// Stellar Wiki API: auth + профиль/ростер + pull tracker + правки карточек + бестиарий с категориями
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import bcrypt from 'npm:bcryptjs@2.4.3';
 import jwt from 'npm:jsonwebtoken@9.0.2';
@@ -156,13 +156,12 @@ Deno.serve(async (req) => {
       if (!user) return json({ error: 'Токен недействителен' }, 401, headers);
       return json({ user: { id: user.id, email: user.email, nickname: user.nickname, role: user.role ?? 'user' } }, 200, headers);
     }
-    /* ----- ПРАВКИ КАРТОЧЕК: публичное чтение (сайт сливает их при старте) ----- */
+    /* ----- ПРАВКИ КАРТОЧЕК ПЕРСОНАЖЕЙ ----- */
     if (path === '/api/characters/overrides' && req.method === 'GET') {
       const { data, error } = await sb.from('character_edits').select('id, data, updated_at');
       if (error) return json({ error: `Ошибка базы: ${error.message}` }, 500, headers);
       return json({ overrides: (data ?? []).map((r: any) => ({ id: r.id, data: r.data, updatedAt: r.updated_at })) }, 200, headers);
     }
-    /* ----- АДМИН: сохранить / сбросить правку карточки ----- */
     if (path === '/api/admin/characters' && req.method === 'PUT') {
       const admin = await requireAdmin(req);
       if (!admin) return json({ error: 'Нет прав администратора' }, 403, headers);
@@ -184,6 +183,138 @@ Deno.serve(async (req) => {
       const id = new URL(req.url).searchParams.get('id') ?? '';
       if (!id) return json({ error: 'Не указан id персонажа' }, 400, headers);
       const { error } = await sb.from('character_edits').delete().eq('id', id);
+      if (error) return json({ error: `Ошибка удаления: ${error.message}` }, 500, headers);
+      return json({ ok: true, id }, 200, headers);
+    }
+    /* ----- БЕСТИАРИЙ: публичное чтение (категории + записи) ----- */
+    if (path === '/api/bestiary' && req.method === 'GET') {
+      const { data, error } = await sb.from('bestiary').select('*').order('id');
+      if (error) return json({ error: `Ошибка базы: ${error.message}` }, 500, headers);
+      const { data: cats, error: catErr } = await sb.from('bestiary_categories').select('*').order('sort').order('id');
+      if (catErr) return json({ error: `Ошибка базы: ${catErr.message}` }, 500, headers);
+      return json({
+        categories: (cats ?? []).map((r: any) => ({
+          id: r.id, name: r.name, image: r.image, description: r.description, sort: r.sort,
+        })),
+        entries: (data ?? []).map((r: any) => ({
+          id: r.id,
+          category: r.category,
+          name: r.name,
+          rarity: r.rarity,
+          description: r.description,
+          image: r.image,
+          props: r.props ?? {},
+          tags: r.tags ?? '',
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        })),
+      }, 200, headers);
+    }
+    /* ----- БЕСТИАРИЙ: категории (admin) ----- */
+    if (path === '/api/admin/bestiary/categories' && req.method === 'POST') {
+      const admin = await requireAdmin(req);
+      if (!admin) return json({ error: 'Нет прав администратора' }, 403, headers);
+      const body = await req.json().catch(() => ({}));
+      const name = String(body.name ?? '').trim();
+      if (!name) return json({ error: 'Название категории обязательно' }, 400, headers);
+      const row = {
+        name,
+        image: body.image ? String(body.image) : null,
+        description: String(body.description ?? ''),
+        sort: Number(body.sort ?? 0),
+      };
+      const { data, error } = await sb.from('bestiary_categories').insert(row).select().single();
+      if (error) return json({ error: `Ошибка сохранения: ${error.message}` }, 500, headers);
+      return json({ ok: true, category: data }, 201, headers);
+    }
+    if (path === '/api/admin/bestiary/categories' && req.method === 'PUT') {
+      const admin = await requireAdmin(req);
+      if (!admin) return json({ error: 'Нет прав администратора' }, 403, headers);
+      const body = await req.json().catch(() => ({}));
+      const id = Number(body.id);
+      if (!id) return json({ error: 'Не указан id категории' }, 400, headers);
+      const { data: old } = await sb.from('bestiary_categories').select('*').eq('id', id).maybeSingle();
+      if (!old) return json({ error: 'Категория не найдена' }, 404, headers);
+      const patch: any = { updated_at: new Date().toISOString() };
+      let newName: string | null = null;
+      if (body.name !== undefined) {
+        const n = String(body.name).trim();
+        if (!n) return json({ error: 'Название категории обязательно' }, 400, headers);
+        patch.name = n;
+        newName = n;
+      }
+      if (body.image !== undefined) patch.image = body.image ? String(body.image) : null;
+      if (body.description !== undefined) patch.description = String(body.description);
+      if (body.sort !== undefined) patch.sort = Number(body.sort);
+      const { error } = await sb.from('bestiary_categories').update(patch).eq('id', id);
+      if (error) return json({ error: `Ошибка обновления: ${error.message}` }, 500, headers);
+      // Переименовали — переносим все предметы в новое имя категории
+      if (newName && newName !== old.name) {
+        const { error: e2 } = await sb.from('bestiary').update({ category: newName }).eq('category', old.name);
+        if (e2) return json({ error: `Категория переименована, но предметы не перенесены: ${e2.message}` }, 500, headers);
+      }
+      return json({ ok: true }, 200, headers);
+    }
+    if (path === '/api/admin/bestiary/categories' && req.method === 'DELETE') {
+      const admin = await requireAdmin(req);
+      if (!admin) return json({ error: 'Нет прав администратора' }, 403, headers);
+      const id = Number(new URL(req.url).searchParams.get('id') ?? 0);
+      if (!id) return json({ error: 'Не указан id категории' }, 400, headers);
+      const { data: old } = await sb.from('bestiary_categories').select('name').eq('id', id).maybeSingle();
+      if (!old) return json({ error: 'Категория не найдена' }, 404, headers);
+      // Каскад: сначала предметы категории, потом сама категория
+      const { error: e1 } = await sb.from('bestiary').delete().eq('category', old.name);
+      if (e1) return json({ error: `Ошибка удаления записей: ${e1.message}` }, 500, headers);
+      const { error: e2 } = await sb.from('bestiary_categories').delete().eq('id', id);
+      if (e2) return json({ error: `Ошибка удаления категории: ${e2.message}` }, 500, headers);
+      return json({ ok: true, id }, 200, headers);
+    }
+    /* ----- БЕСТИАРИЙ: записи (admin) ----- */
+    if (path === '/api/admin/bestiary' && req.method === 'POST') {
+      const admin = await requireAdmin(req);
+      if (!admin) return json({ error: 'Нет прав администратора' }, 403, headers);
+      const body = await req.json().catch(() => ({}));
+      const category = String(body.category ?? '').trim();
+      const name = String(body.name ?? '').trim();
+      if (!category || !name) return json({ error: 'Категория и название обязательны' }, 400, headers);
+      const row = {
+        category,
+        name,
+        rarity: body.rarity === null || body.rarity === undefined || body.rarity === '' ? null : Number(body.rarity),
+        description: String(body.description ?? ''),
+        image: body.image ? String(body.image) : null,
+        props: body.props && typeof body.props === 'object' && !Array.isArray(body.props) ? body.props : {},
+        tags: String(body.tags ?? ''),
+        created_by: admin.id,
+      };
+      const { data, error } = await sb.from('bestiary').insert(row).select().single();
+      if (error) return json({ error: `Ошибка сохранения: ${error.message}` }, 500, headers);
+      return json({ ok: true, entry: data }, 201, headers);
+    }
+    if (path === '/api/admin/bestiary' && req.method === 'PUT') {
+      const admin = await requireAdmin(req);
+      if (!admin) return json({ error: 'Нет прав администратора' }, 403, headers);
+      const body = await req.json().catch(() => ({}));
+      const id = Number(body.id);
+      if (!id) return json({ error: 'Не указан id записи' }, 400, headers);
+      const patch: any = { updated_at: new Date().toISOString() };
+      if (body.category !== undefined) patch.category = String(body.category).trim();
+      if (body.name !== undefined) patch.name = String(body.name).trim();
+      if (body.rarity !== undefined) patch.rarity = body.rarity === null || body.rarity === '' ? null : Number(body.rarity);
+      if (body.description !== undefined) patch.description = String(body.description);
+      if (body.image !== undefined) patch.image = body.image ? String(body.image) : null;
+      if (body.props !== undefined) patch.props = body.props && typeof body.props === 'object' && !Array.isArray(body.props) ? body.props : {};
+      if (body.tags !== undefined) patch.tags = String(body.tags);
+      const { data, error } = await sb.from('bestiary').update(patch).eq('id', id).select().single();
+      if (error) return json({ error: `Ошибка обновления: ${error.message}` }, 500, headers);
+      return json({ ok: true, entry: data }, 200, headers);
+    }
+    if (path === '/api/admin/bestiary' && req.method === 'DELETE') {
+      const admin = await requireAdmin(req);
+      if (!admin) return json({ error: 'Нет прав администратора' }, 403, headers);
+      const id = Number(new URL(req.url).searchParams.get('id') ?? 0);
+      if (!id) return json({ error: 'Не указан id записи' }, 400, headers);
+      const { error } = await sb.from('bestiary').delete().eq('id', id);
       if (error) return json({ error: `Ошибка удаления: ${error.message}` }, 500, headers);
       return json({ ok: true, id }, 200, headers);
     }

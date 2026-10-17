@@ -33,6 +33,44 @@ export interface CharacterOverride {
   data: Record<string, unknown>;
   updatedAt: string;
 }
+export interface BestiaryCategory {
+  id: number;
+  name: string;
+  image: string | null;
+  description: string;
+  sort: number;
+}
+export interface BestiaryEntry {
+  id: number;
+  category: string;
+  name: string;
+  rarity: number | null;
+  description: string;
+  image: string | null;
+  props: Record<string, string>;
+  tags: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface BestiaryPayload {
+  category: string;
+  name: string;
+  rarity: number | null;
+  description: string;
+  image: string | null;
+  props: Record<string, string>;
+  tags: string;
+}
+export interface CategoryPayload {
+  name: string;
+  image: string | null;
+  description: string;
+  sort: number;
+}
+export interface BestiaryData {
+  categories: BestiaryCategory[];
+  entries: BestiaryEntry[];
+}
 export const API_ENABLED: boolean =
   Boolean(import.meta.env.VITE_API_URL) || import.meta.env.DEV;
 export const API_BASE = import.meta.env.VITE_API_URL
@@ -86,4 +124,32 @@ export const apiSaveCharacterOverride = (token: string, id: string, patch: Recor
 export const apiDeleteCharacterOverride = (token: string, id: string) =>
   request<{ ok: boolean; id: string }>(
     `/admin/characters?id=${encodeURIComponent(id)}`, { method: 'DELETE' }, token,
+  );
+/* ----- Бестиарий: записи ----- */
+export const apiGetBestiary = () =>
+  request<BestiaryData>('/bestiary');
+export const apiCreateBestiary = (token: string, payload: BestiaryPayload) =>
+  request<{ ok: boolean; entry: BestiaryEntry }>(
+    '/admin/bestiary', { method: 'POST', body: JSON.stringify(payload) }, token,
+  );
+export const apiUpdateBestiary = (token: string, id: number, payload: Partial<BestiaryPayload>) =>
+  request<{ ok: boolean; entry: BestiaryEntry }>(
+    '/admin/bestiary', { method: 'PUT', body: JSON.stringify({ id, ...payload }) }, token,
+  );
+export const apiDeleteBestiary = (token: string, id: number) =>
+  request<{ ok: boolean; id: number }>(
+    `/admin/bestiary?id=${id}`, { method: 'DELETE' }, token,
+  );
+/* ----- Бестиарий: категории ----- */
+export const apiCreateCategory = (token: string, payload: CategoryPayload) =>
+  request<{ ok: boolean; category: BestiaryCategory }>(
+    '/admin/bestiary/categories', { method: 'POST', body: JSON.stringify(payload) }, token,
+  );
+export const apiUpdateCategory = (token: string, id: number, payload: Partial<CategoryPayload>) =>
+  request<{ ok: boolean }>(
+    '/admin/bestiary/categories', { method: 'PUT', body: JSON.stringify({ id, ...payload }) }, token,
+  );
+export const apiDeleteCategory = (token: string, id: number) =>
+  request<{ ok: boolean; id: number }>(
+    `/admin/bestiary/categories?id=${id}`, { method: 'DELETE' }, token,
   );

@@ -4,14 +4,14 @@ import { NavLink } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   House, Users, Map, Trophy, User, MoreHorizontal,
-  Newspaper, BookOpen, Settings as SettingsIcon, X, Calculator, Dice5,
+  Newspaper, BookOpen, Settings as SettingsIcon, X, Calculator, Dice5, Skull,
 } from 'lucide-react';
 import { MOBILE_NAV_ITEMS, MORE_ITEMS } from '../../utils/constants';
 
 const ICONS: Record<string, any> = {
   home: House, users: Users, map: Map, trophy: Trophy, user: User, more: MoreHorizontal,
   news: Newspaper, guides: BookOpen, settings: SettingsIcon, calculator: Calculator,
-  dice: Dice5,
+  dice: Dice5, bestiary: Skull,
 };
 
 const MORE_PATHS = MORE_ITEMS.map((m) => m.path);
