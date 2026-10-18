@@ -1,11 +1,13 @@
 // Бестиарий: двухуровневая картотека (полки категорий + предметы).
 // Карточки компактные: имя, редкость, теги. Описание читается внутри:
 // у предмета — в модалке просмотра, у категории — в шапке полки.
+// Админ: свойства предмета можно переставлять стрелками вверх/вниз.
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Plus, Pencil, Trash2, Search, X, Archive, AlertCircle, Tag, RefreshCw,
   Sword, Skull, Waves, Gem, UtensilsCrossed, Package, KeyRound, ArrowLeft,
+  ChevronUp, ChevronDown,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -226,6 +228,17 @@ export const BestiaryPage = () => {
 
   const setProp = (i: number, patch: Partial<PropRow>) =>
     setItemForm((f) => (f ? { ...f, props: f.props.map((p, j) => (j === i ? { ...p, ...patch } : p)) } : f));
+
+  /* Перестановка свойства вверх/вниз с сохранением порядка */
+  const moveProp = (i: number, dir: -1 | 1) =>
+    setItemForm((f) => {
+      if (!f) return f;
+      const j = i + dir;
+      if (j < 0 || j >= f.props.length) return f;
+      const next = [...f.props];
+      [next[i], next[j]] = [next[j], next[i]];
+      return { ...f, props: next };
+    });
 
   /* Компактная карточка предмета: без описания — оно внутри модалки */
   const renderCard = (e: BestiaryEntry) => (
@@ -566,16 +579,37 @@ export const BestiaryPage = () => {
               <span className={labelClass}>Теги (через запятую)</span>
               <input value={itemForm.tags} onChange={(e) => setItemForm({ ...itemForm, tags: e.target.value })} placeholder="сигнатура, aero" className={inputClass} />
             </label>
+            {/* Свойства: порядок редактируется стрелками */}
             <div className="mb-4">
-              <span className={labelClass}>Свойства (ключ → значение)</span>
+              <span className={labelClass}>Свойства (ключ → значение) — стрелки меняют порядок</span>
               <div className="space-y-2">
                 {itemForm.props.map((p, i) => (
-                  <div key={i} className="flex gap-2">
+                  <div key={i} className="flex gap-2 items-stretch">
                     <input value={p.k} onChange={(e) => setProp(i, { k: e.target.value })} placeholder="Ключ (Тип)" className={`${inputClass} flex-1`} />
                     <input value={p.v} onChange={(e) => setProp(i, { v: e.target.value })} placeholder="Значение (Broadblade)" className={`${inputClass} flex-1`} />
+                    <div className="flex flex-col gap-0.5 shrink-0 self-center">
+                      <button
+                        onClick={() => moveProp(i, -1)}
+                        disabled={i === 0}
+                        className="p-0.5 rounded-md text-gray-500 hover:text-ivory hover:bg-glass-hover transition-colors focus-ring disabled:opacity-30"
+                        aria-label="Поднять свойство выше"
+                        title="Выше"
+                      >
+                        <ChevronUp size={14} />
+                      </button>
+                      <button
+                        onClick={() => moveProp(i, 1)}
+                        disabled={i === itemForm.props.length - 1}
+                        className="p-0.5 rounded-md text-gray-500 hover:text-ivory hover:bg-glass-hover transition-colors focus-ring disabled:opacity-30"
+                        aria-label="Опустить свойство ниже"
+                        title="Ниже"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    </div>
                     <button
                       onClick={() => setItemForm({ ...itemForm, props: itemForm.props.filter((_, j) => j !== i) })}
-                      className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors focus-ring shrink-0"
+                      className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors focus-ring shrink-0 self-center"
                       aria-label="Убрать свойство"
                     >
                       <X size={15} />
