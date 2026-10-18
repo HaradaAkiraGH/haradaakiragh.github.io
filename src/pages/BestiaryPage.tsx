@@ -1,13 +1,13 @@
 // Бестиарий: двухуровневая картотека (полки категорий + предметы).
 // Карточки компактные: имя, редкость, теги. Описание читается внутри:
 // у предмета — в модалке просмотра, у категории — в шапке полки.
-// Админ: свойства предмета можно переставлять стрелками вверх/вниз.
+// Админ: создание/правка/удаление, перестановка свойств, ИМПОРТ ПАЧКОЙ из JSON.
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Plus, Pencil, Trash2, Search, X, Archive, AlertCircle, Tag, RefreshCw,
   Sword, Skull, Waves, Gem, UtensilsCrossed, Package, KeyRound, ArrowLeft,
-  ChevronUp, ChevronDown,
+  ChevronUp, ChevronDown, Download, Terminal, Check,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -17,6 +17,52 @@ import {
   BestiaryEntry, BestiaryCategory,
 } from '../utils/api';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
+
+/* ---------- Скрипт-скрейпер для консоли DevTools на prydwen.gg ----------
+   Запускается на странице оружия/предметов, собирает все карточки в JSON
+   и копирует его в буфер обмена (функция copy() есть только в консоли). */
+const SCRAPER_SCRIPT = String.raw`
+(function () {
+  var cand = [];
+  var all = document.querySelectorAll('*');
+  for (var i = 0; i < all.length; i++) {
+    var el = all[i];
+    var t = el.textContent || '';
+    if (t.indexOf('Rarity:') !== -1 && /Rarity:\s*[1-5]\s*★/.test(t) && el.querySelector('img')) cand.push(el);
+  }
+  var minimal = cand.filter(function (el) {
+    return !cand.some(function (o) { return o !== el && el.contains(o); });
+  });
+  var cards = [];
+  minimal.forEach(function (card) {
+    try {
+      var text = (card.textContent || '').replace(/\s+/g, ' ').trim();
+      var head = text.match(/^(.*?)\s+Rarity:\s*([1-5])\s*★\s+Type:\s*([A-Za-z]+)/);
+      if (!head) return;
+      var rest = text.slice(head[0].length);
+      var atkIdx = rest.indexOf('ATK (Lv.90):');
+      var desc = (atkIdx !== -1 ? rest.slice(0, atkIdx) : rest).trim();
+      var atkM = rest.match(/ATK \(Lv\.90\):\s*([\d.]+%?)/);
+      var after = atkM ? rest.slice(rest.indexOf(atkM[0]) + atkM[0].length) : '';
+      var sub2 = after.match(/^\s*([A-Za-z][A-Za-z .%\/]*?)\(Lv\.90\):\s*([\d.]+%?)/);
+      var img = card.querySelector('img');
+      cards.push({
+        name: head[1],
+        rarity: Number(head[2]),
+        type: head[3],
+        description: desc,
+        atk: atkM ? atkM[1] : '',
+        substat: sub2 ? sub2[1].trim() + ' (Lv.90)' : '',
+        substatValue: sub2 ? sub2[2] : '',
+        image: img ? (img.currentSrc || img.src || img.getAttribute('data-src') || '') : ''
+      });
+    } catch (e) {}
+  });
+  console.table(cards.map(function (c) { return { name: c.name, rarity: c.rarity, type: c.type }; }));
+  copy(JSON.stringify(cards, null, 2));
+  console.log('Готово: ' + cards.length + ' записей скопировано в буфер обмена');
+})();
+`;
 
 const CATEGORY_ALIASES: { keys: string[]; icon: LucideIcon }[] = [
   { keys: ['оружие', 'weapon', 'weapons', 'пушки'], icon: Sword },
@@ -103,6 +149,15 @@ export const BestiaryPage = () => {
   const [catForm, setCatForm] = useState<CatForm | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  /* Импорт пачкой */
+  const [importOpen, setImportOpen] = useState(false);
+  const [importCat, setImportCat] = useState('');
+  const [importSource, setImportSource] = useState('');
+  const [importText, setImportText] = useState('');
+  const [importBusy, setImportBusy] = useState(false);
+  const [importLog, setImportLog] = useState('');
+  const [scriptOpen, setScriptOpen] = useState(false);
+  const [scriptCopied, setScriptCopied] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -239,6 +294,65 @@ export const BestiaryPage = () => {
       [next[i], next[j]] = [next[j], next[i]];
       return { ...f, props: next };
     });
+
+  /* ---------- Импорт пачкой ---------- */
+  const copyScript = async () => {
+    await navigator.clipboard.writeText(SCRAPER_SCRIPT);
+    setScriptCopied(true);
+    setTimeout(() => setScriptCopied(false), 1500);
+  };
+  const doBulkImport = async () => {
+    if (!token) return;
+    let arr: any[] = [];
+    try {
+      arr = JSON.parse(importText);
+    } catch {
+      setImportLog('Невалидный JSON: проверь, что вставил весь текст из буфера (начинается с [ и заканчивается ])');
+      return;
+    }
+    if (!Array.isArray(arr) || arr.length === 0) {
+      setImportLog('Ожидался массив записей, пришло что-то другое');
+      return;
+    }
+    const cat = importCat || current?.name || '';
+    if (!cat) { setImportLog('Выбери категорию для импорта'); return; }
+    setImportBusy(true);
+    setImportLog('Старт...');
+    const existing = new Set(
+      (data?.entries ?? []).filter((e) => e.category === cat).map((e) => e.name.toLowerCase()),
+    );
+    let created = 0;
+    let skipped = 0;
+    for (const item of arr) {
+      const name = String(item?.name ?? '').trim();
+      if (!name || existing.has(name.toLowerCase())) { skipped++; continue; }
+      const props: Record<string, string> = {};
+      if (item.type) props['Тип'] = String(item.type);
+      if (item.atk) props['ATK (Lv.90)'] = String(item.atk);
+      if (item.substat && item.substatValue) props[String(item.substat)] = String(item.substatValue);
+      if (importSource.trim()) props['Источник'] = importSource.trim();
+      try {
+        await apiCreateBestiary(token, {
+          category: cat,
+          name,
+          rarity: item.rarity === undefined || item.rarity === null || item.rarity === '' ? null : Number(item.rarity),
+          description: String(item.description ?? ''),
+          image: item.image ? String(item.image) : null,
+          tags: '',
+          props,
+        });
+        existing.add(name.toLowerCase());
+        created++;
+      } catch {
+        skipped++;
+      }
+      setImportLog(`Создано: ${created} · пропущено: ${skipped} · из ${arr.length}`);
+    }
+    setImportBusy(false);
+    setImportLog(`Готово. Создано: ${created}, пропущено (дубли/ошибки): ${skipped}`);
+    setImportText('');
+    await load();
+  };
 
   /* Компактная карточка предмета: без описания — оно внутри модалки */
   const renderCard = (e: BestiaryEntry) => (
@@ -408,6 +522,16 @@ export const BestiaryPage = () => {
             {isAdmin && (
               <div className="flex gap-2 shrink-0 w-full md:w-auto">
                 <button
+                  onClick={() => {
+                    setImportCat(current.name);
+                    setImportLog('');
+                    setImportOpen(true);
+                  }}
+                  className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-glass border border-glass-border text-sm text-ivory hover:border-accent/40 transition-colors focus-ring"
+                >
+                  <Download size={15} /> Импорт пачкой
+                </button>
+                <button
                   onClick={() => { setItemForm({ id: null, category: current.name, name: '', rarity: '', description: '', image: '', tags: '', props: [{ k: '', v: '' }] }); setMsg(null); }}
                   className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-accent to-accent-light text-bg text-sm font-bold hover:shadow-glow transition-all focus-ring"
                 >
@@ -445,7 +569,7 @@ export const BestiaryPage = () => {
               <div>
                 <p className="text-ivory font-semibold">На полке пусто</p>
                 <p className="text-gray-500 text-sm mt-1">
-                  {search ? 'Попробуй другой запрос' : isAdmin ? 'Добавь первый предмет кнопкой сверху' : 'Предметы ещё не добавлены'}
+                  {search ? 'Попробуй другой запрос' : isAdmin ? 'Добавь первый предмет или импортируй пачкой' : 'Предметы ещё не добавлены'}
                 </p>
               </div>
             </div>
@@ -467,7 +591,7 @@ export const BestiaryPage = () => {
         </>
       )}
 
-      {/* ========== МОДАЛКА ПРОСМОТРА (bottom-sheet на мобильном) ========== */}
+      {/* ========== МОДАЛКА ПРОСМОТРА ========== */}
       {detail && (
         <div className={sheetClass} onClick={() => setDetail(null)} role="dialog" aria-modal="true">
           <div className={sheetPanel} onClick={(e) => e.stopPropagation()}>
@@ -527,6 +651,86 @@ export const BestiaryPage = () => {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ========== МОДАЛКА ИМПОРТА ПАЧКОЙ ========== */}
+      {importOpen && (
+        <div className={sheetClass} onClick={() => setImportOpen(false)} role="dialog" aria-modal="true">
+          <div className={`${sheetPanel} max-w-2xl`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-ivory flex items-center gap-2">
+                <Download size={18} className="text-accent-light" /> Импорт пачкой с prydwen.gg
+              </h3>
+              <button onClick={() => setImportOpen(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-ivory focus-ring" aria-label="Закрыть">
+                <X size={18} />
+              </button>
+            </div>
+            <ol className="space-y-1.5 text-xs text-gray-400 list-decimal list-inside mb-3">
+              <li>Открой страницу оружия на prydwen.gg и <b className="text-ivory">прокрути до самого низа</b> (картинки грузятся по мере скролла)</li>
+              <li>Нажми F12 → вкладка Console → вставь скрипт (кнопка ниже) → Enter → JSON уйдёт в буфер</li>
+              <li>Вернись сюда, выбери категорию, вставь JSON (Ctrl+V) → «Импортировать»</li>
+            </ol>
+            <button
+              onClick={() => setScriptOpen(!scriptOpen)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-glass border border-glass-border text-xs text-gray-300 hover:text-ivory hover:border-accent/40 transition-colors focus-ring mb-3"
+            >
+              <Terminal size={13} /> {scriptOpen ? 'Скрыть скрипт-скрейпер' : 'Показать скрипт-скрейпер'}
+            </button>
+            {scriptOpen && (
+              <div className="mb-3 space-y-2">
+                <pre className="p-3 rounded-lg bg-bg-secondary border border-glass-border text-[10px] text-gray-400 overflow-x-auto max-h-48 overflow-y-auto">
+                  {SCRAPER_SCRIPT}
+                </pre>
+                <button
+                  onClick={copyScript}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-glass border border-glass-border text-xs text-ivory hover:border-accent/40 transition-colors focus-ring"
+                >
+                  {scriptCopied ? <Check size={12} className="text-green-400" /> : <Terminal size={12} />}
+                  {scriptCopied ? 'Скопировано!' : 'Скопировать скрипт'}
+                </button>
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <label className="block">
+                <span className={labelClass}>Категория-приёмник *</span>
+                <select value={importCat} onChange={(e) => setImportCat(e.target.value)} className={inputClass}>
+                  <option value="">— выбери —</option>
+                  {(data?.categories ?? []).map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className={labelClass}>Источник по умолчанию (необязательно)</span>
+                <input value={importSource} onChange={(e) => setImportSource(e.target.value)} placeholder="Напр.: Ивентовый баннер" className={inputClass} />
+              </label>
+            </div>
+            <label className="block mb-3">
+              <span className={labelClass}>JSON из буфера обмена</span>
+              <textarea
+                rows={7}
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                placeholder='[{"name":"Starfield Calibrator","rarity":5,...}]'
+                className={`${inputClass} font-mono text-xs`}
+              />
+            </label>
+            {importLog && (
+              <p className="mb-3 px-3 py-2 rounded-lg bg-bg-secondary border border-glass-border text-xs text-gray-300 font-mono">
+                {importLog}
+              </p>
+            )}
+            <button
+              onClick={doBulkImport}
+              disabled={importBusy || !importText.trim()}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-accent to-accent-light text-bg font-bold disabled:opacity-50 hover:shadow-glow transition-all focus-ring flex items-center justify-center gap-2"
+            >
+              {importBusy && <RefreshCw size={15} className="animate-spin" />}
+              {importBusy ? 'Импортирую...' : 'Импортировать'}
+            </button>
+            <p className="text-[11px] text-gray-600 mt-2">
+              Дубли по имени внутри категории пропускаются. Картинки остаются ссылками на CDN Prydwen — наш no-referrer не даёт их защите нас заблокировать.
+            </p>
           </div>
         </div>
       )}
