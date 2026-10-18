@@ -1,13 +1,13 @@
 // Бестиарий: двухуровневая картотека (полки категорий + предметы).
 // Карточки компактные: имя, редкость, теги. Описание читается внутри:
 // у предмета — в модалке просмотра, у категории — в шапке полки.
-// Админ: создание/правка/удаление, перестановка свойств, ИМПОРТ ПАЧКОЙ из JSON.
+// Админ: создание/правка/удаление, перестановка свойств, ИМПОРТ ПАЧКОЙ из JSON (v2 с innerText).
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Plus, Pencil, Trash2, Search, X, Archive, AlertCircle, Tag, RefreshCw,
   Sword, Skull, Waves, Gem, UtensilsCrossed, Package, KeyRound, ArrowLeft,
-  ChevronUp, ChevronDown, Download, Terminal, Check,
+  ChevronUp, ChevronDown, Download, Terminal, Check, Sparkles,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -18,17 +18,15 @@ import {
 } from '../utils/api';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
-/* ---------- Скрипт-скрейпер для консоли DevTools на prydwen.gg ----------
-   Запускается на странице оружия/предметов, собирает все карточки в JSON
-   и копирует его в буфер обмена (функция copy() есть только в консоли). */
-const SCRAPER_SCRIPT = String.raw`
-(function () {
+/* ---------- Скрипт-скрейпер v2 для консоли DevTools на prydwen.gg ----------
+   Использует innerText (сохраняет пробелы между блоками) и выводит диагностику. */
+const SCRAPER_SCRIPT = String.raw`(function () {
+  var nodes = document.querySelectorAll('*');
   var cand = [];
-  var all = document.querySelectorAll('*');
-  for (var i = 0; i < all.length; i++) {
-    var el = all[i];
-    var t = el.textContent || '';
-    if (t.indexOf('Rarity:') !== -1 && /Rarity:\s*[1-5]\s*★/.test(t) && el.querySelector('img')) cand.push(el);
+  for (var i = 0; i < nodes.length; i++) {
+    var el = nodes[i];
+    var t = el.innerText || el.textContent || '';
+    if (t.indexOf('Rarity:') !== -1 && /Rarity:\s*[1-5]/.test(t) && el.querySelector('img')) cand.push(el);
   }
   var minimal = cand.filter(function (el) {
     return !cand.some(function (o) { return o !== el && el.contains(o); });
@@ -36,8 +34,11 @@ const SCRAPER_SCRIPT = String.raw`
   var cards = [];
   minimal.forEach(function (card) {
     try {
-      var text = (card.textContent || '').replace(/\s+/g, ' ').trim();
-      var head = text.match(/^(.*?)\s+Rarity:\s*([1-5])\s*★\s+Type:\s*([A-Za-z]+)/);
+      var text = (card.innerText || card.textContent || '').replace(/\s+/g, ' ').trim();
+      var type = '';
+      var head = text.match(/^(.*?)\s*Rarity:\s*([1-5])\s*(?:★|\*)?\s*Type:\s*([A-Za-z]+)/);
+      if (head) { type = head[3]; }
+      else { head = text.match(/^(.*?)\s*Rarity:\s*([1-5])\s*(?:★|\*)?/); }
       if (!head) return;
       var rest = text.slice(head[0].length);
       var atkIdx = rest.indexOf('ATK (Lv.90):');
@@ -49,7 +50,7 @@ const SCRAPER_SCRIPT = String.raw`
       cards.push({
         name: head[1],
         rarity: Number(head[2]),
-        type: head[3],
+        type: type,
         description: desc,
         atk: atkM ? atkM[1] : '',
         substat: sub2 ? sub2[1].trim() + ' (Lv.90)' : '',
@@ -58,11 +59,17 @@ const SCRAPER_SCRIPT = String.raw`
       });
     } catch (e) {}
   });
-  console.table(cards.map(function (c) { return { name: c.name, rarity: c.rarity, type: c.type }; }));
+  if (cards.length === 0) {
+    var bodyText = document.body.innerText || document.body.textContent || '';
+    var idx = bodyText.indexOf('Rarity:');
+    console.log('Диагностика: карточек-кандидатов = ' + minimal.length + '; слово Rarity: на странице = ' + (idx !== -1));
+    console.log('Фрагмент текста вокруг первого Rarity:: ' + JSON.stringify(bodyText.slice(Math.max(0, idx - 100), idx + 150)));
+  } else {
+    console.table(cards.map(function (c) { return { name: c.name, rarity: c.rarity, type: c.type }; }));
+  }
   copy(JSON.stringify(cards, null, 2));
   console.log('Готово: ' + cards.length + ' записей скопировано в буфер обмена');
-})();
-`;
+})();`;
 
 const CATEGORY_ALIASES: { keys: string[]; icon: LucideIcon }[] = [
   { keys: ['оружие', 'weapon', 'weapons', 'пушки'], icon: Sword },
@@ -124,16 +131,25 @@ const SafeImage = ({ src, alt, className = '' }: { src: string | null; alt: stri
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
   if (src && !failed) {
-    return <img src={src} alt={alt} onError={() => setFailed(true)} className={`object-cover ${className}`} draggable={false} />;
+    return (
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+        className={`object-cover ${className}`}
+        draggable={false}
+      />
+    );
   }
   return null;
 };
 
 const inputClass = 'w-full bg-bg-secondary border border-glass-border rounded-lg px-3 py-2 text-sm text-ivory focus-ring';
 const labelClass = 'block text-xs text-gray-400 mb-1.5';
-// Обёртка модалок: на телефоне — bottom-sheet, на десктопе — по центру
 const sheetClass = 'fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center sm:p-4';
-const sheetPanel = 'glass-panel w-full max-w-2xl rounded-t-3xl sm:rounded-2xl p-5 sm:p-6 animate-slide-up max-h-[85vh] overflow-y-auto pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] sm:pb-6';
+const sheetPanel = 'glass-panel solaris-crest w-full max-w-2xl rounded-t-3xl sm:rounded-2xl p-5 sm:p-6 animate-slide-up max-h-[85vh] overflow-y-auto pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] sm:pb-6';
 
 export const BestiaryPage = () => {
   const { catId } = useParams<{ catId: string }>();
@@ -149,7 +165,6 @@ export const BestiaryPage = () => {
   const [catForm, setCatForm] = useState<CatForm | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  /* Импорт пачкой */
   const [importOpen, setImportOpen] = useState(false);
   const [importCat, setImportCat] = useState('');
   const [importSource, setImportSource] = useState('');
@@ -284,7 +299,6 @@ export const BestiaryPage = () => {
   const setProp = (i: number, patch: Partial<PropRow>) =>
     setItemForm((f) => (f ? { ...f, props: f.props.map((p, j) => (j === i ? { ...p, ...patch } : p)) } : f));
 
-  /* Перестановка свойства вверх/вниз с сохранением порядка */
   const moveProp = (i: number, dir: -1 | 1) =>
     setItemForm((f) => {
       if (!f) return f;
@@ -295,7 +309,6 @@ export const BestiaryPage = () => {
       return { ...f, props: next };
     });
 
-  /* ---------- Импорт пачкой ---------- */
   const copyScript = async () => {
     await navigator.clipboard.writeText(SCRAPER_SCRIPT);
     setScriptCopied(true);
@@ -362,7 +375,7 @@ export const BestiaryPage = () => {
       className="glass-panel-hover overflow-hidden text-left focus-ring group"
       aria-label={`Открыть запись ${e.name}`}
     >
-      <div className="relative aspect-[4/3] overflow-hidden">
+      <div className="relative aspect-[4/3] overflow-hidden bg-bg-secondary">
         <SafeImage src={e.image} alt={e.name} className="w-full h-full transition-transform duration-300 group-hover:scale-105" />
         {!e.image && (
           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a2118] to-[#14100c]">
@@ -370,13 +383,15 @@ export const BestiaryPage = () => {
           </div>
         )}
         {e.rarity !== null && (
-          <span className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 px-1.5 sm:px-2 py-0.5 rounded-md bg-black/55 backdrop-blur text-yellow-400 text-[10px] sm:text-xs font-bold border border-yellow-400/30">
+          <span className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 px-1.5 sm:px-2 py-0.5 rounded-md bg-black/65 backdrop-blur text-amber-300 text-[10px] sm:text-xs font-bold border border-amber-400/35">
             {'★'.repeat(e.rarity)}
           </span>
         )}
       </div>
-      <div className="p-2.5 sm:p-3">
-        <h4 className="font-semibold text-ivory group-hover:text-accent-light transition-colors truncate text-xs sm:text-sm">{e.name}</h4>
+      <div className="p-2.5 sm:p-3 bg-gradient-to-b from-bg-secondary/85 to-bg/95">
+        <h4 className="font-bold text-ivory group-hover:text-accent-light transition-colors truncate text-xs sm:text-sm">
+          {e.name}
+        </h4>
         {e.tags && (
           <p className="flex items-center gap-1 text-[10px] text-gray-500 mt-1 truncate">
             <Tag size={10} className="shrink-0" /> {e.tags}
@@ -406,17 +421,22 @@ export const BestiaryPage = () => {
       {/* ========== ВИТРИНА КАТЕГОРИЙ ========== */}
       {!catId && (
         <>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 sm:gap-4">
             <div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-ivory flex items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-accent-light mb-1">
+                <Sparkles size={12} /> База данных Соларис-3
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-ivory flex items-center gap-3">
                 <Archive size={24} className="text-accent-light shrink-0" /> Бестиарий
               </h2>
-              <p className="text-gray-400 mt-1 text-sm sm:text-base">Полки Соларис-3: выбери категорию и листай её содержимое</p>
+              <p className="text-gray-400 mt-0.5 text-sm">
+                Полки Соларис-3: выбери категорию и листай её содержимое
+              </p>
             </div>
             {isAdmin && (
               <button
                 onClick={() => { setCatForm({ id: null, name: '', image: '', description: '', sort: '0' }); setMsg(null); }}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-accent to-accent-light text-bg text-sm font-bold hover:shadow-glow transition-all focus-ring shrink-0"
+                className="btn-luxury focus-ring shrink-0"
               >
                 <Plus size={16} /> Новая категория
               </button>
@@ -450,28 +470,32 @@ export const BestiaryPage = () => {
                 const n = countFor(c.name);
                 return (
                   <div key={c.id} className="relative group">
-                    <Link to={`/bestiary/${c.id}`} className="block glass-panel-hover overflow-hidden focus-ring rounded-2xl">
-                      <div className="relative aspect-[16/9] overflow-hidden">
+                    <Link to={`/bestiary/${c.id}`} className="block glass-panel-hover solaris-crest overflow-hidden focus-ring rounded-2xl">
+                      <div className="relative aspect-[16/9] overflow-hidden bg-bg-secondary">
                         <SafeImage src={c.image} alt={c.name} className="w-full h-full transition-transform duration-300 group-hover:scale-105" />
                         {!c.image && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a2118] to-[#14100c]">
-                            <Icon size={36} className="text-accent-light/60" />
+                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a2118] via-[#1b1510] to-[#100d0a]">
+                            <Icon size={38} className="text-accent-light/70 group-hover:scale-110 transition-transform" />
                           </div>
                         )}
-                        <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/55 backdrop-blur border border-glass-border text-[11px] font-bold text-ivory">
+                        <span className="absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded-md bg-black/65 backdrop-blur border border-glass-border text-[11px] font-mono font-bold text-accent-light">
                           {n}
                         </span>
                       </div>
-                      {/* Описание категории живёт в шапке полки, не на карточке */}
-                      <div className="p-3 sm:p-4">
-                        <h3 className="font-bold text-ivory group-hover:text-accent-light transition-colors truncate">{c.name}</h3>
+                      <div className="p-3.5 sm:p-4 flex items-center justify-between gap-2">
+                        <h3 className="font-bold text-ivory group-hover:text-accent-light transition-colors truncate">
+                          {c.name}
+                        </h3>
+                        <span className="text-[11px] text-gray-500 group-hover:text-accent-light transition-colors">
+                          Открыть →
+                        </span>
                       </div>
                     </Link>
                     {isAdmin && (
-                      <div className="absolute top-2 left-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="absolute top-2.5 left-2.5 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => { setCatForm(catToForm(c)); setMsg(null); }}
-                          className="p-2 rounded-lg bg-black/60 backdrop-blur border border-glass-border text-gray-300 hover:text-ivory hover:border-accent/50 transition-colors focus-ring"
+                          className="p-2 rounded-lg bg-black/65 backdrop-blur border border-glass-border text-gray-300 hover:text-ivory hover:border-accent/50 transition-colors focus-ring"
                           aria-label={`Изменить категорию ${c.name}`}
                         >
                           <Pencil size={14} />
@@ -479,7 +503,7 @@ export const BestiaryPage = () => {
                         <button
                           onClick={() => removeCat(c)}
                           disabled={busy}
-                          className="p-2 rounded-lg bg-black/60 backdrop-blur border border-glass-border text-gray-300 hover:text-red-300 hover:border-red-500/50 transition-colors focus-ring disabled:opacity-50"
+                          className="p-2 rounded-lg bg-black/65 backdrop-blur border border-glass-border text-gray-300 hover:text-red-300 hover:border-red-500/50 transition-colors focus-ring disabled:opacity-50"
                           aria-label={`Удалить категорию ${c.name}`}
                         >
                           <Trash2 size={14} />
@@ -497,11 +521,11 @@ export const BestiaryPage = () => {
       {/* ========== ПОЛКА КАТЕГОРИИ ========== */}
       {catId && current && (
         <>
-          <Link to="/bestiary" className="inline-flex items-center gap-2 text-gray-400 hover:text-ivory transition-colors focus-ring rounded-lg">
-            <ArrowLeft size={18} /> Ко всем категориям
+          <Link to="/bestiary" className="inline-flex items-center gap-2 text-gray-400 hover:text-ivory text-sm font-medium transition-colors focus-ring rounded-lg">
+            <ArrowLeft size={17} /> Ко всем категориям
           </Link>
 
-          <div className="glass-panel p-4 sm:p-5 flex flex-col md:flex-row gap-4 sm:gap-5 items-start">
+          <div className="glass-panel solaris-crest p-4 sm:p-5 flex flex-col md:flex-row gap-4 sm:gap-5 items-start">
             <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl border border-glass-border overflow-hidden shrink-0 relative">
               <SafeImage src={current.image} alt={current.name} className="w-full h-full" />
               {!current.image && (
@@ -512,8 +536,8 @@ export const BestiaryPage = () => {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl sm:text-2xl font-bold text-ivory">{current.name}</h2>
-                <span className="px-2 py-0.5 rounded-md bg-accent/15 border border-accent/30 text-accent-light text-[11px] font-bold">
+                <h2 className="text-xl sm:text-2xl font-extrabold text-ivory">{current.name}</h2>
+                <span className="px-2.5 py-0.5 rounded-md bg-accent/15 border border-accent/30 text-accent-light text-xs font-mono font-bold">
                   {countFor(current.name)}
                 </span>
               </div>
@@ -533,7 +557,7 @@ export const BestiaryPage = () => {
                 </button>
                 <button
                   onClick={() => { setItemForm({ id: null, category: current.name, name: '', rarity: '', description: '', image: '', tags: '', props: [{ k: '', v: '' }] }); setMsg(null); }}
-                  className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-accent to-accent-light text-bg text-sm font-bold hover:shadow-glow transition-all focus-ring"
+                  className="flex-1 md:flex-none btn-luxury focus-ring"
                 >
                   <Plus size={15} /> Добавить предмет
                 </button>
@@ -560,7 +584,7 @@ export const BestiaryPage = () => {
                 aria-label="Поиск по категории"
               />
             </div>
-            <span className="text-xs text-gray-500 pr-1">Найдено: {items.length}</span>
+            <span className="text-xs text-gray-400 font-mono pr-1">Найдено: {items.length}</span>
           </div>
 
           {items.length === 0 ? (
@@ -613,7 +637,7 @@ export const BestiaryPage = () => {
                   >
                     {detail.category}
                   </Link>
-                  {detail.rarity !== null && <span className="text-yellow-400 text-xs font-bold">{'★'.repeat(detail.rarity)}</span>}
+                  {detail.rarity !== null && <span className="text-amber-300 text-xs font-bold">{'★'.repeat(detail.rarity)}</span>}
                 </div>
                 <h3 className="text-xl sm:text-2xl font-bold text-ivory leading-tight">{detail.name}</h3>
                 {detail.tags && <p className="flex items-center gap-1 text-xs text-gray-500 mt-1"><Tag size={11} /> {detail.tags}</p>}
@@ -622,14 +646,13 @@ export const BestiaryPage = () => {
                 <X size={18} />
               </button>
             </div>
-            {/* Описание читается только здесь */}
             {detail.description && <p className="text-sm text-gray-300 leading-relaxed mb-4">{detail.description}</p>}
             {Object.keys(detail.props ?? {}).length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                 {Object.entries(detail.props).map(([k, v]) => (
                   <div key={k} className="p-3 rounded-lg bg-bg-secondary/60 border border-glass-border">
                     <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">{k}</p>
-                    <p className="text-sm text-ivory">{String(v)}</p>
+                    <p className="text-sm font-semibold text-ivory">{String(v)}</p>
                   </div>
                 ))}
               </div>
@@ -669,26 +692,26 @@ export const BestiaryPage = () => {
             </div>
             <ol className="space-y-1.5 text-xs text-gray-400 list-decimal list-inside mb-3">
               <li>Открой страницу оружия на prydwen.gg и <b className="text-ivory">прокрути до самого низа</b> (картинки грузятся по мере скролла)</li>
-              <li>Нажми F12 → вкладка Console → вставь скрипт (кнопка ниже) → Enter → JSON уйдёт в буфер</li>
+              <li>Нажми F12 → вкладка Console → вставь скрипт v2 (кнопка ниже) → Enter → JSON уйдёт в буфер</li>
               <li>Вернись сюда, выбери категорию, вставь JSON (Ctrl+V) → «Импортировать»</li>
             </ol>
             <button
               onClick={() => setScriptOpen(!scriptOpen)}
               className="flex items-center gap-2 px-3 py-2 rounded-lg bg-glass border border-glass-border text-xs text-gray-300 hover:text-ivory hover:border-accent/40 transition-colors focus-ring mb-3"
             >
-              <Terminal size={13} /> {scriptOpen ? 'Скрыть скрипт-скрейпер' : 'Показать скрипт-скрейпер'}
+              <Terminal size={13} /> {scriptOpen ? 'Скрыть скрипт-скрейпер v2' : 'Показать скрипт-скрейпер v2'}
             </button>
             {scriptOpen && (
               <div className="mb-3 space-y-2">
-                <pre className="p-3 rounded-lg bg-bg-secondary border border-glass-border text-[10px] text-gray-400 overflow-x-auto max-h-48 overflow-y-auto">
+                <pre className="p-3 rounded-lg bg-bg-secondary border border-glass-border text-[10px] text-gray-400 overflow-x-auto max-h-48 overflow-y-auto font-mono">
                   {SCRAPER_SCRIPT}
                 </pre>
                 <button
                   onClick={copyScript}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-glass border border-glass-border text-xs text-ivory hover:border-accent/40 transition-colors focus-ring"
                 >
-                  {scriptCopied ? <Check size={12} className="text-green-400" /> : <Terminal size={12} />}
-                  {scriptCopied ? 'Скопировано!' : 'Скопировать скрипт'}
+                  {scriptCopied ? <Check size={12} className="text-emerald-400" /> : <Terminal size={12} />}
+                  {scriptCopied ? 'Скопировано!' : 'Скопировать скрипт v2'}
                 </button>
               </div>
             )}
@@ -728,9 +751,6 @@ export const BestiaryPage = () => {
               {importBusy && <RefreshCw size={15} className="animate-spin" />}
               {importBusy ? 'Импортирую...' : 'Импортировать'}
             </button>
-            <p className="text-[11px] text-gray-600 mt-2">
-              Дубли по имени внутри категории пропускаются. Картинки остаются ссылками на CDN Prydwen — наш no-referrer не даёт их защите нас заблокировать.
-            </p>
           </div>
         </div>
       )}
@@ -783,7 +803,6 @@ export const BestiaryPage = () => {
               <span className={labelClass}>Теги (через запятую)</span>
               <input value={itemForm.tags} onChange={(e) => setItemForm({ ...itemForm, tags: e.target.value })} placeholder="сигнатура, aero" className={inputClass} />
             </label>
-            {/* Свойства: порядок редактируется стрелками */}
             <div className="mb-4">
               <span className={labelClass}>Свойства (ключ → значение) — стрелки меняют порядок</span>
               <div className="space-y-2">
