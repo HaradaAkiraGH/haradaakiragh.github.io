@@ -1,5 +1,5 @@
 // Контекст аутентификации: пользователь, токен, login/register/logout.
-// В демо-режиме (прод без API) прозрачно использует старый мок-логин.
+// В демо-режиме (прод без API) прозрачно использует локальный мок-логин и регистрацию.
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { apiLogin, apiMe, apiRegister, API_ENABLED } from '../utils/api';
@@ -22,7 +22,13 @@ const LEGACY_KEY = 'ww_auth';
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<ApiUser | null>(null);
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  const [token, setToken] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  });
   const [ready, setReady] = useState(false);
 
   // Восстановление сессии при старте
@@ -33,18 +39,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const { user: me } = await apiMe(token);
           setUser(me);
         } catch {
-          localStorage.removeItem(TOKEN_KEY);
+          try {
+            localStorage.removeItem(TOKEN_KEY);
+          } catch {
+            /* ignore */
+          }
           setToken(null);
         }
       } else if (!API_ENABLED) {
-        const legacy = localStorage.getItem(LEGACY_KEY);
-        if (legacy) {
-          try {
-            const parsed = JSON.parse(legacy) as { email?: string };
-            setUser({ id: 0, email: parsed.email ?? 'demo@wuwa.gg', nickname: 'Rover', role: 'user' });
-          } catch {
-            /* битый legacy — игнорируем */
+        try {
+          const legacy = localStorage.getItem(LEGACY_KEY);
+          if (legacy) {
+            const parsed = JSON.parse(legacy) as { email?: string; nickname?: string };
+            setUser({
+              id: 0,
+              email: parsed.email ?? 'demo@wuwa.gg',
+              nickname: parsed.nickname || 'Rover',
+              role: 'user',
+            });
           }
+        } catch {
+          /* битый legacy — игнорируем */
         }
       }
       setReady(true);
@@ -56,26 +71,52 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, password: string) => {
     if (API_ENABLED) {
       const payload = await apiLogin(email, password);
-      localStorage.setItem(TOKEN_KEY, payload.token);
+      try {
+        localStorage.setItem(TOKEN_KEY, payload.token);
+      } catch {
+        /* ignore */
+      }
       setToken(payload.token);
       setUser(payload.user);
     } else {
-      localStorage.setItem(LEGACY_KEY, JSON.stringify({ email }));
-      setUser({ id: 0, email, nickname: 'Rover', role: 'user' });
+      const fallbackNick = email.includes('@') ? email.split('@')[0] : 'Rover';
+      try {
+        localStorage.setItem(LEGACY_KEY, JSON.stringify({ email, nickname: fallbackNick || 'Rover' }));
+      } catch {
+        /* ignore */
+      }
+      setUser({ id: 0, email, nickname: fallbackNick || 'Rover', role: 'user' });
     }
   };
 
   const register = async (email: string, password: string, nickname: string) => {
-    if (!API_ENABLED) throw new Error('Регистрация недоступна в демо-режиме');
-    const payload = await apiRegister(email, password, nickname);
-    localStorage.setItem(TOKEN_KEY, payload.token);
-    setToken(payload.token);
-    setUser(payload.user);
+    if (API_ENABLED) {
+      const payload = await apiRegister(email, password, nickname);
+      try {
+        localStorage.setItem(TOKEN_KEY, payload.token);
+      } catch {
+        /* ignore */
+      }
+      setToken(payload.token);
+      setUser(payload.user);
+    } else {
+      const cleanNick = nickname.trim() || 'Rover';
+      try {
+        localStorage.setItem(LEGACY_KEY, JSON.stringify({ email, nickname: cleanNick }));
+      } catch {
+        /* ignore */
+      }
+      setUser({ id: 0, email, nickname: cleanNick, role: 'user' });
+    }
   };
 
   const logout = () => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(LEGACY_KEY);
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(LEGACY_KEY);
+    } catch {
+      /* ignore */
+    }
     setToken(null);
     setUser(null);
   };
