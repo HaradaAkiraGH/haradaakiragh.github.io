@@ -1,5 +1,6 @@
 // Бестиарий: двухуровневая картотека (полки категорий + предметы).
-// Мобильный вид: 2 колонки карточек, модалки-bottom-sheet.
+// Карточки компактные: имя, редкость, теги. Описание читается внутри:
+// у предмета — в модалке просмотра, у категории — в шапке полки.
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
@@ -226,6 +227,7 @@ export const BestiaryPage = () => {
   const setProp = (i: number, patch: Partial<PropRow>) =>
     setItemForm((f) => (f ? { ...f, props: f.props.map((p, j) => (j === i ? { ...p, ...patch } : p)) } : f));
 
+  /* Компактная карточка предмета: без описания — оно внутри модалки */
   const renderCard = (e: BestiaryEntry) => (
     <button
       key={e.id}
@@ -241,16 +243,15 @@ export const BestiaryPage = () => {
           </div>
         )}
         {e.rarity !== null && (
-          <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/55 backdrop-blur text-yellow-400 text-xs font-bold border border-yellow-400/30">
+          <span className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 px-1.5 sm:px-2 py-0.5 rounded-md bg-black/55 backdrop-blur text-yellow-400 text-[10px] sm:text-xs font-bold border border-yellow-400/30">
             {'★'.repeat(e.rarity)}
           </span>
         )}
       </div>
-      <div className="p-3 sm:p-4">
-        <h4 className="font-semibold text-ivory group-hover:text-accent-light transition-colors truncate text-sm sm:text-base">{e.name}</h4>
-        {e.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed hidden sm:block">{e.description}</p>}
+      <div className="p-2.5 sm:p-3">
+        <h4 className="font-semibold text-ivory group-hover:text-accent-light transition-colors truncate text-xs sm:text-sm">{e.name}</h4>
         {e.tags && (
-          <p className="flex items-center gap-1 text-[10px] text-gray-500 mt-2 truncate">
+          <p className="flex items-center gap-1 text-[10px] text-gray-500 mt-1 truncate">
             <Tag size={10} className="shrink-0" /> {e.tags}
           </p>
         )}
@@ -334,9 +335,9 @@ export const BestiaryPage = () => {
                           {n}
                         </span>
                       </div>
+                      {/* Описание категории живёт в шапке полки, не на карточке */}
                       <div className="p-3 sm:p-4">
                         <h3 className="font-bold text-ivory group-hover:text-accent-light transition-colors truncate">{c.name}</h3>
-                        {c.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed hidden sm:block">{c.description}</p>}
                       </div>
                     </Link>
                     {isAdmin && (
@@ -437,7 +438,7 @@ export const BestiaryPage = () => {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
                 {(expanded ? items : items.slice(0, PAGE_SIZE)).map(renderCard)}
               </div>
               {items.length > PAGE_SIZE && (
@@ -484,6 +485,7 @@ export const BestiaryPage = () => {
                 <X size={18} />
               </button>
             </div>
+            {/* Описание читается только здесь */}
             {detail.description && <p className="text-sm text-gray-300 leading-relaxed mb-4">{detail.description}</p>}
             {Object.keys(detail.props ?? {}).length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
