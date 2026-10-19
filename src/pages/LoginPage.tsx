@@ -1,5 +1,5 @@
 // Экран входа и регистрации Stellar Wiki:
-// Видеофон, автозапуск музыки (15% громкости), вертикальный регулятор громкости и обновлённая типографика
+// Видеофон, мгновенный автозапуск музыки (15%), вертикальная громкость и дизайн в стиле терминала Соларис-3
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -21,16 +21,16 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
-// Пути к файлам в папке public/
+// Пути к медиафайлам в папке public/
 const VIDEO_SRC = '/login-bg.mp4';
 const AUDIO_SRC = '/login-bgm.mp3';
 
-// Стартовая громкость (15% — мягкий фоновый уровень)
+// Стартовая громкость (15%)
 const DEFAULT_VOLUME = 0.15;
-const VOL_STORAGE_KEY = 'ww_login_volume_v2';
-const MUTE_STORAGE_KEY = 'ww_login_muted_v2';
+const VOL_STORAGE_KEY = 'ww_login_volume_v3';
+const MUTE_STORAGE_KEY = 'ww_login_muted_v3';
 
-// Декоративные парящие частицы
+// Парящие световые частицы
 const PARTICLES = [
   { id: 1, left: '12%', top: '75%', size: 3, duration: 7, delay: 0 },
   { id: 2, left: '24%', top: '82%', size: 4, duration: 9, delay: 1.2 },
@@ -41,7 +41,7 @@ const PARTICLES = [
 ];
 
 const cardVariants: Variants = {
-  hidden: { opacity: 0, y: 28, scale: 0.94, filter: 'blur(10px)' },
+  hidden: { opacity: 0, y: 24, scale: 0.95, filter: 'blur(10px)' },
   visible: {
     opacity: 1,
     y: 0,
@@ -49,16 +49,16 @@ const cardVariants: Variants = {
     filter: 'blur(0px)',
     transition: {
       type: 'spring' as const,
-      stiffness: 110,
+      stiffness: 115,
       damping: 18,
-      staggerChildren: 0.07,
-      delayChildren: 0.12,
+      staggerChildren: 0.06,
+      delayChildren: 0.1,
     },
   },
 };
 
 const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 14 },
+  hidden: { opacity: 0, y: 12 },
   visible: {
     opacity: 1,
     y: 0,
@@ -97,7 +97,7 @@ export const LoginPage = () => {
   });
   const [volumeHover, setVolumeHover] = useState(false);
 
-  // Применяем громкость и сохраняем настройки
+  // Сохранение и синхронизация громкости
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -107,39 +107,60 @@ export const LoginPage = () => {
     localStorage.setItem(MUTE_STORAGE_KEY, String(muted));
   }, [volume, muted]);
 
-  // Автозапуск музыки при входе на страницу + мгновенный подхват при блокировке браузером
+  // Двухступенчатый автозапуск музыки (прямой старт + обход блокировки через muted-поток)
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.volume = muted ? 0 : volume;
-    audio.muted = muted;
 
-    const events = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'];
+    const targetVol = muted ? 0 : volume;
+    audio.volume = targetVol;
+
+    const events = ['mouseover', 'pointermove', 'pointerenter', 'focus', 'keydown', 'wheel', 'pointerdown', 'touchstart'];
 
     const removeUnlockListeners = () => {
-      events.forEach((ev) => window.removeEventListener(ev, tryStartAudio));
+      events.forEach((ev) => window.removeEventListener(ev, unlockAudio));
     };
 
-    function tryStartAudio() {
+    function unlockAudio() {
       const el = audioRef.current;
       if (!el) return;
-      if (!el.paused) {
-        setPlaying(true);
-        removeUnlockListeners();
-        return;
-      }
+      el.muted = muted;
+      el.volume = muted ? 0 : volume;
       el.play()
         .then(() => {
           setPlaying(true);
           removeUnlockListeners();
         })
-        .catch(() => {
-          // Браузер ждёт первого жеста пользователя — слушатели остаются активными
-        });
+        .catch(() => {});
     }
 
-    tryStartAudio();
-    events.forEach((ev) => window.addEventListener(ev, tryStartAudio, { passive: true }));
+    const startImmediately = async () => {
+      try {
+        // Попытка 1: прямой запуск со звуком
+        audio.muted = muted;
+        audio.volume = targetVol;
+        await audio.play();
+        setPlaying(true);
+        removeUnlockListeners();
+      } catch {
+        // Попытка 2: старт в muted-режиме с мгновенным снятием mute
+        try {
+          audio.muted = true;
+          await audio.play();
+          setTimeout(() => {
+            if (!audioRef.current) return;
+            audioRef.current.muted = muted;
+            audioRef.current.volume = targetVol;
+            setPlaying(!audioRef.current.paused);
+          }, 80);
+        } catch {
+          // Оставляем слушатели на малейшее движение мыши
+        }
+      }
+    };
+
+    startImmediately();
+    events.forEach((ev) => window.addEventListener(ev, unlockAudio, { passive: true }));
 
     return () => removeUnlockListeners();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -156,6 +177,8 @@ export const LoginPage = () => {
     if (!audio.paused) {
       audio.pause();
     } else {
+      audio.muted = muted;
+      audio.volume = muted ? 0 : volume;
       audio.play().catch(() => {});
     }
   };
@@ -210,19 +233,17 @@ export const LoginPage = () => {
   const VolumeIcon = effectiveVolume === 0 ? VolumeX : effectiveVolume < 0.5 ? Volume1 : Volume2;
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-[#07080c] flex items-center justify-center p-4 select-none">
-      {/* Подключение шрифтов Jost и Montserrat для карточки логина */}
+    <div className="relative min-h-screen w-full overflow-hidden bg-[#07080c] flex items-center justify-center p-4 select-none font-sans">
+      {/* Подключаем чистый геометрический Manrope для идеальной кириллицы */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&family=Montserrat:wght@500;600;700&display=swap');
-        .login-card-font {
-          font-family: 'Jost', sans-serif;
-        }
-        .login-title-font {
-          font-family: 'Montserrat', sans-serif;
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+        .ww-clean-font {
+          font-family: 'Manrope', 'Inter', sans-serif;
+          letter-spacing: -0.01em;
         }
       `}</style>
 
-      {/* Фоновое аудио с автозапуском */}
+      {/* Фоновое аудио */}
       <audio
         ref={audioRef}
         src={AUDIO_SRC}
@@ -235,7 +256,7 @@ export const LoginPage = () => {
 
       {/* Видеофон */}
       <motion.video
-        initial={{ opacity: 0, scale: 1.06 }}
+        initial={{ opacity: 0, scale: 1.05 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 1.4, ease: 'easeOut' }}
         src={VIDEO_SRC}
@@ -246,17 +267,17 @@ export const LoginPage = () => {
         className="fixed inset-0 w-full h-full object-cover z-0 pointer-events-none"
       />
 
-      {/* Затемняющие вуали и виньетка */}
+      {/* Многослойное кинематографичное затемнение */}
       <div
         aria-hidden="true"
-        className="fixed inset-0 z-[1] pointer-events-none bg-gradient-to-b from-black/55 via-black/25 to-black/70"
+        className="fixed inset-0 z-[1] pointer-events-none bg-gradient-to-b from-[#07080c]/60 via-[#07080c]/20 to-[#07080c]/75"
       />
       <div
         aria-hidden="true"
-        className="fixed inset-0 z-[1] pointer-events-none bg-[radial-gradient(circle_at_center,transparent_25%,rgba(0,0,0,0.65)_100%)]"
+        className="fixed inset-0 z-[1] pointer-events-none bg-[radial-gradient(circle_at_center,transparent_20%,rgba(5,6,10,0.7)_100%)]"
       />
 
-      {/* Анимированные парящие частицы */}
+      {/* Парящие частицы */}
       <div aria-hidden="true" className="fixed inset-0 z-[2] pointer-events-none overflow-hidden">
         {PARTICLES.map((p) => (
           <motion.span
@@ -284,7 +305,7 @@ export const LoginPage = () => {
         ))}
       </div>
 
-      {/* Верхняя полоса: только название сайта с прежним шрифтом (без лого-иконки слева) */}
+      {/* Верхняя полоса: только название сайта (шрифт не тронут) */}
       <motion.header
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
@@ -296,14 +317,13 @@ export const LoginPage = () => {
         </span>
       </motion.header>
 
-      {/* Компактный плеер: кнопки стоят на месте, а ползунок громкости выпадает ВЕРТИКАЛЬНО вниз */}
+      {/* Компактный плеер с вертикальным ползунком громкости вниз */}
       <motion.div
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.15, ease: 'easeOut' }}
-        className="fixed top-6 right-6 md:right-10 z-40 flex items-center gap-1 p-1 rounded-full bg-black/45 backdrop-blur-xl border border-white/15 shadow-[0_8px_30px_rgba(0,0,0,0.5)]"
+        className="fixed top-6 right-6 md:right-10 z-40 flex items-center gap-1 p-1 rounded-full bg-[#0b0d14]/60 backdrop-blur-2xl border border-white/15 shadow-[0_8px_30px_rgba(0,0,0,0.6)]"
       >
-        {/* Кнопка Play / Pause */}
         <motion.button
           whileHover={{ scale: 1.08 }}
           whileTap={{ scale: 0.92 }}
@@ -322,7 +342,6 @@ export const LoginPage = () => {
           {playing ? <Pause size={13} /> : <Play size={13} className="translate-x-[0.5px]" />}
         </motion.button>
 
-        {/* Кнопка звука + выпадающий вниз вертикальный ползунок */}
         <div
           onMouseEnter={() => setVolumeHover(true)}
           onMouseLeave={() => setVolumeHover(false)}
@@ -352,22 +371,18 @@ export const LoginPage = () => {
                 transition={{ duration: 0.18, ease: 'easeOut' }}
                 className="absolute top-full left-1/2 -translate-x-1/2 pt-2 z-50"
               >
-                <div className="w-9 py-3 rounded-2xl bg-black/65 backdrop-blur-2xl border border-white/15 shadow-[0_12px_32px_rgba(0,0,0,0.65)] flex flex-col items-center gap-2">
-                  {/* Область вертикального ползунка */}
+                <div className="w-9 py-3 rounded-2xl bg-[#0b0d14]/80 backdrop-blur-2xl border border-white/15 shadow-[0_12px_32px_rgba(0,0,0,0.7)] flex flex-col items-center gap-2">
                   <div className="relative w-6 h-24 flex items-center justify-center">
-                    {/* Визуальная дорожка */}
-                    <div className="w-1.5 h-full rounded-full bg-white/20 overflow-hidden relative pointer-events-none">
+                    <div className="w-1.5 h-full rounded-full bg-white/15 overflow-hidden relative pointer-events-none">
                       <div
                         style={{ height: `${effectiveVolume * 100}%` }}
                         className="absolute bottom-0 inset-x-0 rounded-full bg-gradient-to-t from-[#caa07d] to-[#f7ece6]"
                       />
                     </div>
-                    {/* Светящийся бегунок */}
                     <div
                       style={{ bottom: `calc(${effectiveVolume * 100}% - 5px)` }}
                       className="absolute w-2.5 h-2.5 rounded-full bg-[#f7ece6] shadow-[0_0_8px_rgba(247,236,230,0.9)] pointer-events-none"
                     />
-                    {/* Интерактивный input поверх дорожки (0 внизу, 1 вверху) */}
                     <input
                       type="range"
                       min={0}
@@ -380,8 +395,7 @@ export const LoginPage = () => {
                     />
                   </div>
 
-                  {/* Процент громкости */}
-                  <span className="login-card-font text-[10px] font-medium text-ivory/75 tabular-nums">
+                  <span className="ww-clean-font text-[10px] font-semibold text-ivory/80 tabular-nums">
                     {Math.round(effectiveVolume * 100)}%
                   </span>
                 </div>
@@ -391,23 +405,35 @@ export const LoginPage = () => {
         </div>
       </motion.div>
 
-      {/* Центральная стеклянная карточка входа */}
+      {/* Центральная стеклянная карточка в стиле терминала Wuthering Waves */}
       <motion.div
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        className="login-card-font relative z-20 w-full max-w-[415px] rounded-3xl bg-black/35 backdrop-blur-2xl border border-white/20 shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-7 sm:p-8 overflow-hidden"
+        className="ww-clean-font relative z-20 w-full max-w-[420px] rounded-[28px] bg-[#0b0d14]/55 backdrop-blur-2xl border border-white/[0.12] shadow-[0_30px_90px_rgba(0,0,0,0.8),inset_0_1px_0_0_rgba(255,255,255,0.12)] p-7 sm:p-9 overflow-hidden"
       >
-        {/* Мягкий внутренний блик сверху карточки */}
+        {/* Золотистая световая линия на верхней грани */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-72 h-36 rounded-full bg-accent-light/15 blur-3xl"
+          className="pointer-events-none absolute top-0 inset-x-10 h-[1px] bg-gradient-to-r from-transparent via-[#caa07d]/60 to-transparent"
+        />
+
+        {/* Декоративные уголки-скобы интерфейса Соларис-3 */}
+        <span aria-hidden="true" className="pointer-events-none absolute top-3.5 left-3.5 w-2.5 h-2.5 border-t border-l border-[#caa07d]/40 rounded-tl-sm" />
+        <span aria-hidden="true" className="pointer-events-none absolute top-3.5 right-3.5 w-2.5 h-2.5 border-t border-r border-[#caa07d]/40 rounded-tr-sm" />
+        <span aria-hidden="true" className="pointer-events-none absolute bottom-3.5 left-3.5 w-2.5 h-2.5 border-b border-l border-[#caa07d]/40 rounded-bl-sm" />
+        <span aria-hidden="true" className="pointer-events-none absolute bottom-3.5 right-3.5 w-2.5 h-2.5 border-b border-r border-[#caa07d]/40 rounded-br-sm" />
+
+        {/* Мягкое внутреннее свечение сверху */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-72 h-36 rounded-full bg-[#caa07d]/15 blur-3xl"
         />
 
         {/* Переключатель Вход / Регистрация */}
         <motion.div
           variants={itemVariants}
-          className="relative grid grid-cols-2 p-1 mb-6 rounded-2xl bg-black/35 border border-white/10"
+          className="relative grid grid-cols-2 p-1 mb-7 rounded-2xl bg-black/45 border border-white/[0.08]"
         >
           {(['login', 'register'] as const).map((tab) => {
             const active = mode === tab;
@@ -419,15 +445,15 @@ export const LoginPage = () => {
                   setMode(tab);
                   setError(null);
                 }}
-                className={`login-title-font relative z-10 py-2 text-xs font-semibold tracking-wider uppercase rounded-xl transition-colors focus-ring ${
-                  active ? 'text-[#0d0d0f]' : 'text-gray-300 hover:text-white'
+                className={`relative z-10 py-2.5 text-[13px] font-bold rounded-xl transition-colors focus-ring ${
+                  active ? 'text-[#0b0d14]' : 'text-gray-400 hover:text-ivory'
                 }`}
               >
                 {active && (
                   <motion.span
                     layoutId="auth-mode-pill"
-                    transition={{ type: 'spring' as const, stiffness: 300, damping: 26 }}
-                    className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#f7ece6] to-[#caa07d] shadow-glow-sm -z-10"
+                    transition={{ type: 'spring' as const, stiffness: 320, damping: 26 }}
+                    className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#f7ece6] via-[#e5c5a8] to-[#caa07d] shadow-[0_2px_16px_rgba(202,160,125,0.35)] -z-10"
                   />
                 )}
                 {tab === 'login' ? 'Вход' : 'Регистрация'}
@@ -436,8 +462,8 @@ export const LoginPage = () => {
           })}
         </motion.div>
 
-        {/* Заголовок */}
-        <motion.div variants={itemVariants} className="text-center mb-6">
+        {/* Заголовок карточки */}
+        <motion.div variants={itemVariants} className="text-center mb-7">
           <AnimatePresence mode="wait">
             <motion.h1
               key={mode}
@@ -445,19 +471,33 @@ export const LoginPage = () => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.18 }}
-              className="login-title-font text-2xl sm:text-[26px] font-semibold tracking-[0.03em] bg-gradient-to-r from-white via-[#f7ece6] to-[#caa07d] bg-clip-text text-transparent"
+              className="text-2xl sm:text-[27px] font-extrabold tracking-tight text-white leading-snug"
             >
-              {mode === 'login' ? 'С возвращением, Ровер' : 'Создать аккаунт'}
+              {mode === 'login' ? (
+                <>
+                  С возвращением,{' '}
+                  <span className="bg-gradient-to-r from-[#f7ece6] to-[#caa07d] bg-clip-text text-transparent">
+                    Ровер
+                  </span>
+                </>
+              ) : (
+                <>
+                  Новый{' '}
+                  <span className="bg-gradient-to-r from-[#f7ece6] to-[#caa07d] bg-clip-text text-transparent">
+                    аккаунт
+                  </span>
+                </>
+              )}
             </motion.h1>
           </AnimatePresence>
-          <p className="text-sm font-light tracking-[0.02em] text-gray-300/80 mt-1.5">
+          <p className="text-[13px] font-medium text-gray-400 mt-1.5">
             {mode === 'login'
-              ? 'Войди для синхронизации ростера и круток'
-              : 'Зарегистрируйся для сохранения прогресса в облаке'}
+              ? 'Войди для синхронизации ростера и истории круток'
+              : 'Создай профиль для сохранения данных в облаке'}
           </p>
         </motion.div>
 
-        {/* Вывод ошибки */}
+        {/* Уведомление об ошибке */}
         <AnimatePresence>
           {error && (
             <motion.div
@@ -466,7 +506,7 @@ export const LoginPage = () => {
               exit={{ opacity: 0, height: 0, marginBottom: 0 }}
               className="overflow-hidden"
             >
-              <div className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl bg-red-500/15 border border-red-400/30 text-red-200 text-xs">
+              <div className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl bg-red-500/15 border border-red-400/30 text-red-200 text-xs font-medium">
                 <AlertCircle size={15} className="shrink-0 mt-0.5 text-red-300" />
                 <span>{error}</span>
               </div>
@@ -474,7 +514,7 @@ export const LoginPage = () => {
           )}
         </AnimatePresence>
 
-        {/* Форма */}
+        {/* Поля ввода */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <AnimatePresence initial={false}>
             {mode === 'register' && (
@@ -487,11 +527,11 @@ export const LoginPage = () => {
                 className="overflow-hidden"
               >
                 <label className="block pb-1">
-                  <span className="block text-[11px] uppercase tracking-[0.14em] font-medium text-[#e5c5a8]/85 mb-1.5">
-                    Никнейм (2–24 символа)
+                  <span className="block text-xs font-semibold text-gray-300 mb-1.5 ml-0.5">
+                    Никнейм <span className="text-gray-500 font-normal">(2–24 символа)</span>
                   </span>
-                  <div className="relative flex items-center">
-                    <User size={16} className="absolute left-3.5 text-gray-400 pointer-events-none" />
+                  <div className="relative flex items-center group">
+                    <User size={16} className="absolute left-3.5 text-gray-400 group-focus-within:text-[#caa07d] transition-colors pointer-events-none" />
                     <input
                       type="text"
                       required={mode === 'register'}
@@ -500,7 +540,7 @@ export const LoginPage = () => {
                       value={nickname}
                       onChange={(e) => setNickname(e.target.value)}
                       placeholder="Rover"
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/15 text-sm tracking-wide text-ivory placeholder-gray-400/70 focus:outline-none focus:border-accent-light/70 focus:bg-white/[0.1] transition-all"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/35 border border-white/[0.1] text-sm font-medium text-ivory placeholder-gray-500 focus:outline-none focus:border-[#caa07d]/60 focus:bg-black/50 focus:shadow-[0_0_20px_rgba(202,160,125,0.12)] transition-all"
                     />
                   </div>
                 </label>
@@ -509,35 +549,35 @@ export const LoginPage = () => {
           </AnimatePresence>
 
           <motion.label variants={itemVariants} className="block">
-            <span className="block text-[11px] uppercase tracking-[0.14em] font-medium text-[#e5c5a8]/85 mb-1.5">
-              Email
+            <span className="block text-xs font-semibold text-gray-300 mb-1.5 ml-0.5">
+              Электронная почта
             </span>
-            <div className="relative flex items-center">
-              <Mail size={16} className="absolute left-3.5 text-gray-400 pointer-events-none" />
+            <div className="relative flex items-center group">
+              <Mail size={16} className="absolute left-3.5 text-gray-400 group-focus-within:text-[#caa07d] transition-colors pointer-events-none" />
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="rover@solaris.gg"
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/15 text-sm tracking-wide text-ivory placeholder-gray-400/70 focus:outline-none focus:border-accent-light/70 focus:bg-white/[0.1] transition-all"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/35 border border-white/[0.1] text-sm font-medium text-ivory placeholder-gray-500 focus:outline-none focus:border-[#caa07d]/60 focus:bg-black/50 focus:shadow-[0_0_20px_rgba(202,160,125,0.12)] transition-all"
               />
             </div>
           </motion.label>
 
           <motion.label variants={itemVariants} className="block">
-            <span className="block text-[11px] uppercase tracking-[0.14em] font-medium text-[#e5c5a8]/85 mb-1.5">
-              {mode === 'register' ? 'Пароль (мин. 8 символов)' : 'Пароль'}
+            <span className="block text-xs font-semibold text-gray-300 mb-1.5 ml-0.5">
+              Пароль {mode === 'register' && <span className="text-gray-500 font-normal">(мин. 8 символов)</span>}
             </span>
-            <div className="relative flex items-center">
-              <Lock size={16} className="absolute left-3.5 text-gray-400 pointer-events-none" />
+            <div className="relative flex items-center group">
+              <Lock size={16} className="absolute left-3.5 text-gray-400 group-focus-within:text-[#caa07d] transition-colors pointer-events-none" />
               <input
                 type={showPass ? 'text' : 'password'}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/[0.06] border border-white/15 text-sm tracking-wide text-ivory placeholder-gray-400/70 focus:outline-none focus:border-accent-light/70 focus:bg-white/[0.1] transition-all"
+                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-black/35 border border-white/[0.1] text-sm font-medium text-ivory placeholder-gray-500 focus:outline-none focus:border-[#caa07d]/60 focus:bg-black/50 focus:shadow-[0_0_20px_rgba(202,160,125,0.12)] transition-all"
               />
               <button
                 type="button"
@@ -550,10 +590,10 @@ export const LoginPage = () => {
             </div>
           </motion.label>
 
-          {/* Чекбокс «Запомнить меня» */}
+          {/* Чекбокс */}
           <motion.div
             variants={itemVariants}
-            className="flex items-center justify-between text-xs tracking-wide text-gray-300 pt-0.5"
+            className="flex items-center justify-between text-xs font-medium text-gray-300 pt-0.5"
           >
             <label className="flex items-center gap-2 cursor-pointer hover:text-white transition-colors">
               <input
@@ -565,18 +605,18 @@ export const LoginPage = () => {
               <span>Запомнить меня</span>
             </label>
             {demo && (
-              <span className="text-[11px] text-accent-light/90">Демо-режим</span>
+              <span className="text-[11px] font-semibold text-[#caa07d]">Демо-режим</span>
             )}
           </motion.div>
 
           {/* Кнопка отправки */}
           <motion.div variants={itemVariants} className="pt-2">
             <motion.button
-              whileHover={{ scale: 1.015, boxShadow: '0 0 28px rgba(202, 160, 125, 0.45)' }}
+              whileHover={{ scale: 1.015, boxShadow: '0 0 30px rgba(202, 160, 125, 0.4)' }}
               whileTap={{ scale: 0.985 }}
               type="submit"
               disabled={busy}
-              className="login-title-font group relative w-full py-3 rounded-xl bg-gradient-to-r from-[#caa07d] via-[#e5c5a8] to-[#f7ece6] text-[#0d0d0f] font-bold text-xs uppercase tracking-[0.12em] shadow-lg overflow-hidden transition-all disabled:opacity-50 focus-ring flex items-center justify-center gap-2"
+              className="group relative w-full py-3 rounded-xl bg-gradient-to-r from-[#caa07d] via-[#e5c5a8] to-[#f7ece6] text-[#0b0d14] font-bold text-sm shadow-lg overflow-hidden transition-all disabled:opacity-50 focus-ring flex items-center justify-center gap-2"
             >
               <span
                 aria-hidden="true"
@@ -587,11 +627,11 @@ export const LoginPage = () => {
                   ? 'Подождите...'
                   : mode === 'login'
                   ? 'Войти в систему'
-                  : 'Зарегистрироваться'}
+                  : 'Создать аккаунт'}
               </span>
               {!busy && (
                 <ArrowRight
-                  size={15}
+                  size={16}
                   className="transition-transform duration-200 group-hover:translate-x-1"
                 />
               )}
@@ -599,8 +639,8 @@ export const LoginPage = () => {
           </motion.div>
         </form>
 
-        {/* Подвал карточки */}
-        <motion.div variants={itemVariants} className="mt-6 text-center text-xs tracking-wide text-gray-300">
+        {/* Подвал */}
+        <motion.div variants={itemVariants} className="mt-6 text-center text-xs font-medium text-gray-400">
           {mode === 'login' ? (
             <>
               Нет аккаунта?{' '}
@@ -610,7 +650,7 @@ export const LoginPage = () => {
                   setMode('register');
                   setError(null);
                 }}
-                className="font-medium text-ivory hover:text-accent-light underline underline-offset-4 transition-colors"
+                className="font-bold text-ivory hover:text-[#caa07d] underline underline-offset-4 transition-colors"
               >
                 Зарегистрироваться
               </button>
@@ -624,7 +664,7 @@ export const LoginPage = () => {
                   setMode('login');
                   setError(null);
                 }}
-                className="font-medium text-ivory hover:text-accent-light underline underline-offset-4 transition-colors"
+                className="font-bold text-ivory hover:text-[#caa07d] underline underline-offset-4 transition-colors"
               >
                 Войти
               </button>
