@@ -1,623 +1,580 @@
-// Экран входа в стиле референса (прозрачное матовое стекло поверх панорамы Соларис-3,
-// угловая кнопка закрытия карточки, поля с нижней линией и иконками справа,
-// верхняя навигационная шапка и фоновая тема "Saving Light" из Wuthering Waves 1.0)
-import { useEffect, useState } from 'react';
+// Экран входа и регистрации Stellar Wiki:
+// Видеофон, компактный плеер с выезжающей по ховеру громкостью и расширенные анимации
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import type { Variants } from 'framer-motion';
 import {
-  Mail, Lock, Eye, EyeOff, UserRound, AlertCircle, X, Volume2, VolumeX,
-  Play, Pause, Compass, Sparkles, CheckCircle2, HelpCircle, Shield,
+  Mail,
+  Lock,
+  User,
+  Eye,
+  EyeOff,
+  Play,
+  Pause,
+  Volume2,
+  Volume1,
+  VolumeX,
+  AlertCircle,
+  Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
-import { savingLightPlayer } from '../utils/savingLightAudio';
 
-const REMEMBER_KEY = 'ww_remember_email';
+// Пути к твоим файлам в папке public/
+const VIDEO_SRC = '/login-bg.mp4';
+const AUDIO_SRC = '/login-bgm.mp3';
+
+// Декоративные парящие частицы для глубины кадра
+const PARTICLES = [
+  { id: 1, left: '12%', top: '75%', size: 3, duration: 7, delay: 0 },
+  { id: 2, left: '24%', top: '82%', size: 4, duration: 9, delay: 1.2 },
+  { id: 3, left: '38%', top: '70%', size: 2, duration: 6, delay: 2.5 },
+  { id: 4, left: '62%', top: '85%', size: 3, duration: 8, delay: 0.8 },
+  { id: 5, left: '78%', top: '72%', size: 4, duration: 10, delay: 1.7 },
+  { id: 6, left: '88%', top: '80%', size: 2, duration: 7.5, delay: 3.1 },
+];
+
+const cardVariants: Variants = {
+  hidden: { opacity: 0, y: 28, scale: 0.94, filter: 'blur(10px)' },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    filter: 'blur(0px)',
+    transition: {
+      type: 'spring' as const,
+      stiffness: 110,
+      damping: 18,
+      staggerChildren: 0.07,
+      delayChildren: 0.12,
+    },
+  },
+};
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 14 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { type: 'spring' as const, stiffness: 140, damping: 16 },
+  },
+};
 
 export const LoginPage = () => {
   useDocumentMeta({
-    title: 'Вход · Saving Light',
-    description: 'Терминал входа Stellar Wiki — архив и база знаний Соларис-3.',
+    title: 'Вход — Stellar Wiki',
+    description: 'Авторизация в интерактивной энциклопедии Wuthering Waves.',
   });
-  const { login, register, demo, ready, user } = useAuth();
+
+  const { user, ready, demo, login, register } = useAuth();
   const navigate = useNavigate();
 
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
-  const [cardOpen, setCardOpen] = useState(true);
-  const [infoSection, setInfoSection] = useState<'about' | 'features' | 'ost' | null>(null);
-  const [email, setEmail] = useState(() => {
-    try {
-      return localStorage.getItem(REMEMBER_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
+  // Режим формы: вход или регистрация
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
   const [nickname, setNickname] = useState('');
-  const [remember, setRemember] = useState(true);
   const [showPass, setShowPass] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Состояние музыкального плеера "Saving Light"
-  const [audioState, setAudioState] = useState(() => savingLightPlayer.getState());
+  // Состояние компактного аудиоплеера
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [volume, setVolume] = useState<number>(() => {
+    const saved = localStorage.getItem('ww_login_volume');
+    return saved !== null ? Number(saved) : 0.35;
+  });
+  const [muted, setMuted] = useState<boolean>(() => {
+    return localStorage.getItem('ww_login_muted') === 'true';
+  });
+  const [volumeHover, setVolumeHover] = useState(false);
 
+  // Синхронизация громкости с аудио-элементом
   useEffect(() => {
-    const unsub = savingLightPlayer.subscribe(() => {
-      setAudioState(savingLightPlayer.getState());
-    });
-    return () => {
-      unsub();
-      savingLightPlayer.stop();
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = muted ? 0 : volume;
+    audio.muted = muted;
+    localStorage.setItem('ww_login_volume', String(volume));
+    localStorage.setItem('ww_login_muted', String(muted));
+  }, [volume, muted]);
+
+  // Попытка автозапуска музыки при входе на страницу (и фолбэк по первому клику)
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = muted ? 0 : volume;
+
+    const tryPlay = () => {
+      audio
+        .play()
+        .then(() => setPlaying(true))
+        .catch(() => setPlaying(false));
     };
-  }, []);
 
-  // Автозапуск "Saving Light" при первом клике/нажатии пользователя (политика браузеров)
-  useEffect(() => {
-    let triggered = false;
-    const startOnGesture = (e: Event) => {
-      if (triggered) return;
-      const target = e.target as HTMLElement | null;
-      if (target?.closest('[data-audio-control="true"]')) return;
-      triggered = true;
-      if (!savingLightPlayer.getState().playing) {
-        savingLightPlayer.start();
+    tryPlay();
+
+    const unlockOnInteraction = () => {
+      if (audio.paused) {
+        audio
+          .play()
+          .then(() => setPlaying(true))
+          .catch(() => {});
       }
+      window.removeEventListener('pointerdown', unlockOnInteraction);
     };
-    window.addEventListener('pointerdown', startOnGesture, { once: true });
-    window.addEventListener('keydown', startOnGesture, { once: true });
-    return () => {
-      window.removeEventListener('pointerdown', startOnGesture);
-      window.removeEventListener('keydown', startOnGesture);
-    };
+
+    window.addEventListener('pointerdown', unlockOnInteraction, { once: true });
+    return () => window.removeEventListener('pointerdown', unlockOnInteraction);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (ready && user) {
     return <Navigate to="/home" replace />;
   }
 
-  const submit = async (e: React.FormEvent) => {
+  const togglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) {
+      audio.pause();
+      setPlaying(false);
+    } else {
+      audio
+        .play()
+        .then(() => setPlaying(true))
+        .catch(() => setPlaying(false));
+    }
+  };
+
+  const toggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (muted) {
+      setMuted(false);
+      if (volume === 0) setVolume(0.35);
+    } else {
+      setMuted(true);
+    }
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    setVolume(val);
+    if (val === 0) {
+      setMuted(true);
+    } else if (muted) {
+      setMuted(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setNotice(null);
-
-    if (mode === 'forgot') {
-      if (!email.trim()) {
-        setError('Укажи Email для восстановления доступа');
-        return;
-      }
-      setNotice(
-        demo
-          ? 'В демо-режиме подойдёт любой пароль — просто вернись ко входу и нажми «Войти».'
-          : `Инструкция по сбросу пароля отправлена на ${email.trim()}.`,
-      );
-      return;
-    }
-
-    if (mode === 'register' && password !== confirm) {
-      setError('Пароли не совпадают');
-      return;
-    }
-
     setBusy(true);
     try {
-      try {
-        if (remember && email.trim()) {
-          localStorage.setItem(REMEMBER_KEY, email.trim());
-        } else {
-          localStorage.removeItem(REMEMBER_KEY);
-        }
-      } catch {
-        /* ignore */
-      }
-
       if (mode === 'login') {
         await login(email.trim(), password);
       } else {
         await register(email.trim(), password, nickname.trim());
       }
-      savingLightPlayer.stop();
-      navigate('/home');
+      navigate('/home', { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Что-то пошло не так');
+      setError(err instanceof Error ? err.message : 'Ошибка авторизации');
     } finally {
       setBusy(false);
     }
   };
 
-  const quickGuestLogin = async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      await login(email.trim() || 'rover@solaris3.gg', password || 'solaris3');
-      savingLightPlayer.stop();
-      navigate('/home');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось выполнить быстрый вход');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col justify-between overflow-hidden select-none sm:select-auto">
-      {/* Фоновый арт экрана входа (image_bd3517.jpg) */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 z-0 bg-cover bg-center bg-no-repeat transition-transform duration-1000 scale-[1.02]"
-        style={{
-          backgroundImage: `url('/images/login-bg.jpg')`,
-        }}
-      />
-      {/* Многослойная кинематографическая вуаль для идеальной читаемости матового стекла */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 z-0 bg-gradient-to-b from-[#07111e]/60 via-[#091526]/30 to-[#060b14]/80"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_50%_42%,transparent_25%,rgba(4,9,18,0.62)_100%)]"
+    <div className="relative min-h-screen w-full overflow-hidden bg-[#07080c] flex items-center justify-center p-4 select-none">
+      {/* Фоновое аудио */}
+      <audio ref={audioRef} src={AUDIO_SRC} loop preload="auto" />
+
+      {/* Видеофон */}
+      <motion.video
+        initial={{ opacity: 0, scale: 1.06 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 1.4, ease: 'easeOut' }}
+        src={VIDEO_SRC}
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="fixed inset-0 w-full h-full object-cover z-0 pointer-events-none"
       />
 
-      {/* Верхняя навигационная панель как на референсе (Logo слева + ссылки и кнопка Login справа) */}
-      <header className="relative z-20 w-full max-w-7xl mx-auto px-4 sm:px-8 pt-4 sm:pt-6 flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => {
-            setInfoSection(null);
-            setCardOpen(true);
-          }}
-          className="flex items-center gap-3 group focus-ring rounded-xl text-left"
-        >
-          <span className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-md border border-white/25 flex items-center justify-center text-ivory shadow-lg group-hover:border-accent-light transition-colors">
-            <Compass size={20} className="text-accent-light" />
-          </span>
-          <div>
-            <span className="block text-xl sm:text-2xl font-extrabold text-white tracking-tight drop-shadow">
-              Stellar Wiki
-            </span>
-            <span className="block text-[10px] uppercase tracking-[0.24em] text-white/70">
-              Solaris-3 Terminal · v1.0
-            </span>
-          </div>
-        </button>
+      {/* Затемняющие вуали и виньетка для читаемости стеклянной карточки */}
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 z-[1] pointer-events-none bg-gradient-to-b from-black/55 via-black/25 to-black/70"
+      />
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 z-[1] pointer-events-none bg-[radial-gradient(circle_at_center,transparent_25%,rgba(0,0,0,0.65)_100%)]"
+      />
 
-        {/* Правое меню шапки + плеер Saving Light + кнопка Login в рамке */}
-        <nav className="flex items-center gap-2 sm:gap-5">
-          <button
-            type="button"
-            onClick={() => setInfoSection(infoSection === 'about' ? null : 'about')}
-            className={`hidden md:inline-block text-sm font-semibold transition-colors relative py-1 ${
-              infoSection === 'about'
-                ? 'text-accent-light after:content-[""] after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-accent-light'
-                : 'text-white/85 hover:text-white'
-            }`}
-          >
-            О проекте
-          </button>
-          <button
-            type="button"
-            onClick={() => setInfoSection(infoSection === 'features' ? null : 'features')}
-            className={`hidden md:inline-block text-sm font-semibold transition-colors relative py-1 ${
-              infoSection === 'features'
-                ? 'text-accent-light after:content-[""] after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-accent-light'
-                : 'text-white/85 hover:text-white'
-            }`}
-          >
-            Разделы
-          </button>
-          <button
-            type="button"
-            onClick={() => setInfoSection(infoSection === 'ost' ? null : 'ost')}
-            className={`hidden lg:inline-block text-sm font-semibold transition-colors relative py-1 ${
-              infoSection === 'ost'
-                ? 'text-accent-light after:content-[""] after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-accent-light'
-                : 'text-white/85 hover:text-white'
-            }`}
-          >
-            Саундтрек
-          </button>
-
-          {/* Компактный пульт управления музыкой "Saving Light (Wuthering Waves 1.0)" */}
-          <div
-            data-audio-control="true"
-            className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-[#102030]/65 backdrop-blur-xl border border-white/25 text-white shadow-lg"
-          >
-            <button
-              type="button"
-              onClick={() => savingLightPlayer.toggle()}
-              className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-accent-light transition-colors focus-ring"
-              aria-label={audioState.playing ? 'Пауза Saving Light' : 'Включить Saving Light'}
-              title={audioState.playing ? 'Пауза: Saving Light' : 'Играть: Saving Light (WuWa 1.0)'}
-            >
-              {audioState.playing ? <Pause size={14} /> : <Play size={14} />}
-            </button>
-            <div className="hidden sm:flex flex-col min-w-0 pr-1">
-              <span className="text-[11px] font-bold leading-tight text-white flex items-center gap-1.5">
-                Saving Light
-                {audioState.playing && !audioState.muted && (
-                  <span className="inline-flex items-end gap-0.5 h-2.5" aria-hidden="true">
-                    <span className="w-0.5 h-2.5 bg-accent-light animate-pulse rounded-full" />
-                    <span className="w-0.5 h-1.5 bg-accent-light animate-pulse rounded-full" />
-                    <span className="w-0.5 h-2 bg-accent-light animate-pulse rounded-full" />
-                  </span>
-                )}
-              </span>
-              <span className="text-[9px] uppercase tracking-wider text-white/65">
-                WuWa 1.0 Login OST
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => savingLightPlayer.setMuted(!audioState.muted)}
-              className="p-1 text-white/75 hover:text-white transition-colors focus-ring rounded"
-              aria-label={audioState.muted ? 'Включить звук' : 'Выключить звук'}
-              title={audioState.muted ? 'Включить звук' : 'Выключить звук'}
-            >
-              {audioState.muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
-            </button>
-          </div>
-
-          {/* Кнопка Login в рамке (как в правом верхнем углу на референсе) */}
-          <button
-            type="button"
-            onClick={() => {
-              setInfoSection(null);
-              setCardOpen((v) => !v);
+      {/* Анимированные парящие частицы */}
+      <div aria-hidden="true" className="fixed inset-0 z-[2] pointer-events-none overflow-hidden">
+        {PARTICLES.map((p) => (
+          <motion.span
+            key={p.id}
+            style={{
+              left: p.left,
+              top: p.top,
+              width: p.size,
+              height: p.size,
             }}
-            className="px-4 sm:px-6 py-2 rounded-xl border-2 border-white/80 text-white text-sm font-bold tracking-wide hover:bg-white hover:text-[#162938] transition-all duration-200 shadow-lg focus-ring"
-          >
-            {cardOpen ? 'Вход' : 'Открыть вход'}
-          </button>
-        </nav>
-      </header>
+            animate={{
+              y: [0, -110, -220],
+              x: [0, 15, -10],
+              opacity: [0, 0.75, 0],
+              scale: [0.6, 1.2, 0.5],
+            }}
+            transition={{
+              duration: p.duration,
+              repeat: Infinity,
+              delay: p.delay,
+              ease: 'easeInOut',
+            }}
+            className="absolute rounded-full bg-accent-light/80 shadow-[0_0_12px_rgba(247,236,230,0.8)]"
+          />
+        ))}
+      </div>
 
-      {/* Информационная карточка разделов шапки (если выбрана вкладка О проекте / Разделы / Саундтрек) */}
-      {infoSection && (
-        <div className="relative z-20 max-w-xl mx-auto px-4 mt-3 w-full animate-fade-in">
-          <div className="rounded-2xl bg-[#102030]/80 backdrop-blur-2xl border border-white/25 p-4 sm:p-5 text-white shadow-2xl">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-xs font-extrabold uppercase tracking-widest text-accent-light flex items-center gap-1.5">
-                <Sparkles size={13} />
-                {infoSection === 'about' && 'О терминале Stellar Wiki'}
-                {infoSection === 'features' && 'Модули базы знаний'}
-                {infoSection === 'ost' && 'Саундтрек экрана входа · Saving Light'}
-              </span>
-              <button
-                type="button"
-                onClick={() => setInfoSection(null)}
-                className="p-1 rounded-lg text-white/70 hover:text-white"
-                aria-label="Закрыть справку"
-              >
-                <X size={15} />
-              </button>
-            </div>
-            {infoSection === 'about' && (
-              <p className="text-xs sm:text-sm text-white/85 leading-relaxed">
-                Stellar Wiki — интерактивная энциклопедия и командный центр по Wuthering Waves:
-                61 резонатор с билдами и лором, тренажёр ротаций, интерактивная карта Соларис-3,
-                трекер круток и двухуровневый бестиарий.
-              </p>
-            )}
-            {infoSection === 'features' && (
-              <div className="grid grid-cols-2 gap-2 text-xs text-white/85">
-                <div className="p-2 rounded-xl bg-white/5 border border-white/10">
-                  <strong className="text-accent-light block">Каталог и Мета</strong>
-                  Билды, эхо-наборы, тир-листы Tower of Adversity и Whimpering Wastes.
-                </div>
-                <div className="p-2 rounded-xl bg-white/5 border border-white/10">
-                  <strong className="text-accent-light block">Инструменты Rover</strong>
-                  Pull Tracker, DPS-калькулятор, карта регионов и картотека бестиария.
-                </div>
-              </div>
-            )}
-            {infoSection === 'ost' && (
-              <div className="space-y-2 text-xs text-white/85">
-                <p>
-                  На экране входа звучит тема <strong>«Saving Light (Menu Ver.)»</strong> из патча
-                  Wuthering Waves 1.0 (тональность D minor / F major, композитор Thena A, Pioneer
-                  Podcast).
-                </p>
-                <div className="flex items-center gap-3 pt-1" data-audio-control="true">
-                  <span className="text-[11px] text-white/70">Громкость:</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={Math.round((audioState.muted ? 0 : audioState.volume) * 100)}
-                    onChange={(e) => savingLightPlayer.setVolume(Number(e.target.value) / 100)}
-                    className="w-40"
-                    aria-label="Громкость музыки Saving Light"
-                  />
-                  <span className="text-[11px] font-mono text-accent-light">
-                    {Math.round((audioState.muted ? 0 : audioState.volume) * 100)}%
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
+      {/* Верхняя полоса: только минималистичный логотип слева */}
+      <motion.header
+        initial={{ opacity: 0, y: -16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
+        className="fixed top-6 left-6 md:left-10 z-30 flex items-center gap-2.5"
+      >
+        <div className="w-8 h-8 rounded-lg bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-glow-sm">
+          <Sparkles size={15} className="text-accent-light" />
         </div>
-      )}
+        <span className="text-lg font-extrabold tracking-wider text-ivory/90 drop-shadow">
+          STELLAR WIKI
+        </span>
+      </motion.header>
 
-      {/* Центральная зона: карточка из матового стекла точно по макету image_bd349e.jpg */}
-      <main className="relative z-10 flex-1 flex items-center justify-center p-4">
-        {cardOpen ? (
-          <div className="relative w-full max-w-[410px] rounded-[22px] bg-[#162938]/35 backdrop-blur-xl border-2 border-white/35 shadow-[0_20px_55px_rgba(0,0,0,0.65)] px-7 py-8 sm:px-9 sm:py-9 text-white animate-slide-up overflow-hidden">
-            {/* Фирменная угловая кнопка закрытия «×» в правом верхнем углу карточки (как на референсе) */}
-            <button
-              type="button"
-              onClick={() => setCardOpen(false)}
-              className="absolute top-0 right-0 w-11 h-11 bg-[#162938] hover:bg-accent text-white hover:text-bg rounded-bl-[20px] flex items-center justify-center transition-colors shadow-md focus-ring"
-              aria-label="Свернуть окно входа и смотреть арт"
-              title="Скрыть форму (режим обоев)"
+      {/* Компактный плеер: ползунок громкости появляется ТОЛЬКО при наведении на кнопку звука */}
+      <motion.div
+        initial={{ opacity: 0, y: -16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.15, ease: 'easeOut' }}
+        className="fixed top-6 right-6 md:right-10 z-40 flex items-center gap-1 p-1 rounded-full bg-black/45 backdrop-blur-xl border border-white/15 shadow-[0_8px_30px_rgba(0,0,0,0.5)]"
+      >
+        {/* Кнопка Play / Pause */}
+        <motion.button
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.92 }}
+          onClick={togglePlay}
+          aria-label={playing ? 'Пауза' : 'Воспроизвести'}
+          title={playing ? 'Пауза' : 'Включить музыку'}
+          className="relative w-7 h-7 rounded-full flex items-center justify-center text-ivory/90 hover:text-white hover:bg-white/10 transition-colors focus-ring"
+        >
+          {playing && (
+            <motion.span
+              animate={{ scale: [1, 1.35, 1], opacity: [0.4, 0, 0.4] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute inset-0 rounded-full bg-accent-light/30 pointer-events-none"
+            />
+          )}
+          {playing ? <Pause size={13} /> : <Play size={13} className="translate-x-[0.5px]" />}
+        </motion.button>
+
+        {/* Контейнер громкости: раскрывает ползунок только при наведении */}
+        <div
+          onMouseEnter={() => setVolumeHover(true)}
+          onMouseLeave={() => setVolumeHover(false)}
+          className="flex items-center"
+        >
+          <motion.button
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.92 }}
+            onClick={toggleMute}
+            aria-label={muted || volume === 0 ? 'Включить звук' : 'Отключить звук'}
+            title={muted || volume === 0 ? 'Включить звук' : 'Отключить звук'}
+            className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors focus-ring ${
+              muted || volume === 0
+                ? 'text-red-300/90 hover:text-red-200 hover:bg-red-500/15'
+                : 'text-ivory/90 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <VolumeIcon size={14} />
+          </motion.button>
+
+          <AnimatePresence initial={false}>
+            {volumeHover && (
+              <motion.div
+                initial={{ width: 0, opacity: 0, marginRight: 0 }}
+                animate={{ width: 72, opacity: 1, marginRight: 8 }}
+                exit={{ width: 0, opacity: 0, marginRight: 0 }}
+                transition={{ duration: 0.22, ease: 'easeOut' }}
+                className="overflow-hidden flex items-center pl-1"
+              >
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={muted ? 0 : volume}
+                  onChange={handleVolumeChange}
+                  aria-label="Громкость музыки"
+                  className="w-full h-1 bg-white/25 rounded-lg appearance-none cursor-pointer accent-[#caa07d]"
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
+
+      {/* Центральная стеклянная карточка входа */}
+      <motion.div
+        variants={cardVariants}
+        initial="hidden"
+        animate="visible"
+        className="relative z-20 w-full max-w-[410px] rounded-3xl bg-black/35 backdrop-blur-2xl border border-white/20 shadow-[0_25px_80px_rgba(0,0,0,0.75)] p-7 sm:p-8 overflow-hidden"
+      >
+        {/* Мягкий внутренний блик сверху карточки */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-72 h-36 rounded-full bg-accent-light/15 blur-3xl"
+        />
+
+        {/* Переключатель Вход / Регистрация */}
+        <motion.div
+          variants={itemVariants}
+          className="relative grid grid-cols-2 p-1 mb-6 rounded-2xl bg-black/35 border border-white/10"
+        >
+          {(['login', 'register'] as const).map((tab) => {
+            const active = mode === tab;
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => {
+                  setMode(tab);
+                  setError(null);
+                }}
+                className={`relative z-10 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-colors focus-ring ${
+                  active ? 'text-bg' : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="auth-mode-pill"
+                    transition={{ type: 'spring' as const, stiffness: 300, damping: 26 }}
+                    className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#f7ece6] to-[#caa07d] shadow-glow-sm -z-10"
+                  />
+                )}
+                {tab === 'login' ? 'Вход' : 'Регистрация'}
+              </button>
+            );
+          })}
+        </motion.div>
+
+        {/* Заголовок */}
+        <motion.div variants={itemVariants} className="text-center mb-6">
+          <AnimatePresence mode="wait">
+            <motion.h1
+              key={mode}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.18 }}
+              className="text-2xl sm:text-3xl font-bold text-ivory tracking-tight"
             >
-              <X size={20} strokeWidth={2.5} />
-            </button>
+              {mode === 'login' ? 'С возвращением, Ровер' : 'Создать аккаунт'}
+            </motion.h1>
+          </AnimatePresence>
+          <p className="text-xs text-gray-300/80 mt-1.5">
+            {mode === 'login'
+              ? 'Войди для синхронизации ростера и круток'
+              : 'Зарегистрируйся для сохранения прогресса в облаке'}
+          </p>
+        </motion.div>
 
-            {/* Заголовок */}
-            <h1 className="text-2xl sm:text-[28px] font-extrabold text-white text-center tracking-tight mb-1">
-              {mode === 'login' && 'Login'}
-              {mode === 'register' && 'Регистрация'}
-              {mode === 'forgot' && 'Сброс пароля'}
-            </h1>
-            <p className="text-center text-xs text-white/75 mb-6">
-              {mode === 'login' && 'С возвращением в Соларис-3, Rover'}
-              {mode === 'register' && 'Создай профиль резонатора Stellar Wiki'}
-              {mode === 'forgot' && 'Восстановление доступа к терминалу'}
-            </p>
+        {/* Вывод ошибки */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+              animate={{ opacity: 1, height: 'auto', marginBottom: 16 }}
+              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl bg-red-500/15 border border-red-400/30 text-red-200 text-xs">
+                <AlertCircle size={15} className="shrink-0 mt-0.5 text-red-300" />
+                <span>{error}</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-            {error && (
-              <p className="mb-4 flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/25 border border-red-300/40 text-red-100 text-xs">
-                <AlertCircle size={15} className="shrink-0" /> {error}
-              </p>
-            )}
-
-            {notice && (
-              <p className="mb-4 flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/25 border border-emerald-300/40 text-emerald-100 text-xs">
-                <CheckCircle2 size={15} className="shrink-0" /> {notice}
-              </p>
-            )}
-
-            <form onSubmit={submit} className="space-y-5">
-              {mode === 'register' && (
-                <div className="relative border-b-2 border-white/75 focus-within:border-accent-light transition-colors pt-2 pb-1.5">
-                  <label
-                    htmlFor="login-nickname"
-                    className="block text-[11px] font-semibold uppercase tracking-wider text-white/75"
-                  >
-                    Позывной (Nickname)
-                  </label>
-                  <div className="flex items-center gap-2 mt-0.5">
+        {/* Форма */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <AnimatePresence initial={false}>
+            {mode === 'register' && (
+              <motion.div
+                key="nickname-field"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.22, ease: 'easeInOut' }}
+                className="overflow-hidden"
+              >
+                <label className="block pb-1">
+                  <span className="block text-[11px] font-medium text-gray-300 mb-1.5">
+                    Никнейм (2–24 символа)
+                  </span>
+                  <div className="relative flex items-center">
+                    <User size={16} className="absolute left-3.5 text-gray-400 pointer-events-none" />
                     <input
-                      id="login-nickname"
                       type="text"
+                      required={mode === 'register'}
+                      minLength={2}
+                      maxLength={24}
                       value={nickname}
                       onChange={(e) => setNickname(e.target.value)}
                       placeholder="Rover"
-                      className="w-full bg-transparent text-sm text-white placeholder-white/45 outline-none pr-2 font-medium"
-                      required
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/15 text-sm text-ivory placeholder-gray-400/70 focus:outline-none focus:border-accent-light/70 focus:bg-white/[0.1] transition-all"
                     />
-                    <UserRound size={17} className="text-white/85 shrink-0" />
                   </div>
-                </div>
-              )}
-
-              {/* Поле Email с нижней границей и иконкой конверта справа (как на референсе) */}
-              <div className="relative border-b-2 border-white/75 focus-within:border-accent-light transition-colors pt-2 pb-1.5">
-                <label
-                  htmlFor="login-email"
-                  className="block text-[11px] font-semibold uppercase tracking-wider text-white/75"
-                >
-                  Email
                 </label>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <input
-                    id="login-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="rover@solaris3.gg"
-                    className="w-full bg-transparent text-sm text-white placeholder-white/45 outline-none pr-2 font-medium"
-                    required
-                  />
-                  <Mail size={17} className="text-white/85 shrink-0" />
-                </div>
-              </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              {/* Поле Password с нижней границей и иконкой замка справа */}
-              {mode !== 'forgot' && (
-                <div className="relative border-b-2 border-white/75 focus-within:border-accent-light transition-colors pt-2 pb-1.5">
-                  <label
-                    htmlFor="login-password"
-                    className="block text-[11px] font-semibold uppercase tracking-wider text-white/75"
-                  >
-                    Password
-                  </label>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <input
-                      id="login-password"
-                      type={showPass ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full bg-transparent text-sm text-white placeholder-white/45 outline-none pr-2 font-medium"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPass((v) => !v)}
-                      className="text-white/70 hover:text-white transition-colors"
-                      aria-label={showPass ? 'Скрыть пароль' : 'Показать пароль'}
-                      title={showPass ? 'Скрыть пароль' : 'Показать пароль'}
-                    >
-                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                    <Lock size={17} className="text-white/85 shrink-0" />
-                  </div>
-                </div>
-              )}
-
-              {mode === 'register' && (
-                <div className="relative border-b-2 border-white/75 focus-within:border-accent-light transition-colors pt-2 pb-1.5">
-                  <label
-                    htmlFor="login-confirm"
-                    className="block text-[11px] font-semibold uppercase tracking-wider text-white/75"
-                  >
-                    Повтори пароль
-                  </label>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <input
-                      id="login-confirm"
-                      type={showPass ? 'text' : 'password'}
-                      value={confirm}
-                      onChange={(e) => setConfirm(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full bg-transparent text-sm text-white placeholder-white/45 outline-none pr-2 font-medium"
-                      required
-                    />
-                    <Lock size={17} className="text-white/85 shrink-0" />
-                  </div>
-                </div>
-              )}
-
-              {/* Строка Remember me + Forgot Password? как на референсе */}
-              {mode !== 'forgot' && (
-                <div className="flex items-center justify-between gap-2 text-xs text-white/90 pt-0.5">
-                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={remember}
-                      onChange={(e) => setRemember(e.target.checked)}
-                      className="w-3.5 h-3.5 rounded border-white/50 accent-[#162938]"
-                    />
-                    <span>Remember me</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('forgot');
-                      setError(null);
-                      setNotice(null);
-                    }}
-                    className="text-white/85 hover:text-accent-light hover:underline font-medium transition-colors"
-                  >
-                    Forgot Password?
-                  </button>
-                </div>
-              )}
-
-              {/* Главная тёмная кнопка Login во всю ширину карточки (как на макете image_bd349e.jpg) */}
-              <button
-                type="submit"
-                disabled={busy}
-                className="w-full h-11 rounded-lg bg-[#162938] hover:bg-[#1f3a4f] text-white font-bold text-sm tracking-wide shadow-lg border border-white/15 hover:border-accent-light/50 transition-all duration-200 focus-ring disabled:opacity-50"
-              >
-                {busy
-                  ? 'Синхронизация...'
-                  : mode === 'login'
-                  ? 'Login'
-                  : mode === 'register'
-                  ? 'Register'
-                  : 'Восстановить доступ'}
-              </button>
-            </form>
-
-            {/* Переключатель Don't have an account? Register */}
-            <div className="mt-5 text-center text-xs text-white/90 space-y-2">
-              {mode === 'login' && (
-                <p>
-                  Don&apos;t have an account?{' '}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('register');
-                      setError(null);
-                      setNotice(null);
-                    }}
-                    className="font-bold text-white hover:text-accent-light hover:underline ml-1"
-                  >
-                    Register
-                  </button>
-                </p>
-              )}
-              {mode === 'register' && (
-                <p>
-                  Уже есть аккаунт?{' '}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('login');
-                      setError(null);
-                      setNotice(null);
-                    }}
-                    className="font-bold text-white hover:text-accent-light hover:underline ml-1"
-                  >
-                    Login
-                  </button>
-                </p>
-              )}
-              {mode === 'forgot' && (
-                <p>
-                  Вспомнили пароль?{' '}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('login');
-                      setError(null);
-                      setNotice(null);
-                    }}
-                    className="font-bold text-white hover:text-accent-light hover:underline ml-1"
-                  >
-                    Вернуться ко входу
-                  </button>
-                </p>
-              )}
-
-              {/* Быстрый вход в 1 клик для демо-режима */}
-              {demo && (
-                <div className="pt-2 border-t border-white/15 flex items-center justify-between gap-2 text-[11px] text-white/75">
-                  <span className="inline-flex items-center gap-1">
-                    <Shield size={12} className="text-accent-light" /> Демо-терминал открыт
-                  </span>
-                  <button
-                    type="button"
-                    onClick={quickGuestLogin}
-                    className="text-accent-light hover:underline font-semibold"
-                  >
-                    Войти как Rover →
-                  </button>
-                </div>
-              )}
+          <motion.label variants={itemVariants} className="block">
+            <span className="block text-[11px] font-medium text-gray-300 mb-1.5">Email</span>
+            <div className="relative flex items-center">
+              <Mail size={16} className="absolute left-3.5 text-gray-400 pointer-events-none" />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="rover@solaris.gg"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/15 text-sm text-ivory placeholder-gray-400/70 focus:outline-none focus:border-accent-light/70 focus:bg-white/[0.1] transition-all"
+              />
             </div>
-          </div>
-        ) : (
-          /* Режим чистого экрана входа Wuthering Waves 1.0, когда окно свернуто кнопкой × */
-          <div className="flex flex-col items-center text-center animate-fade-in">
-            <button
-              type="button"
-              onClick={() => setCardOpen(true)}
-              className="group px-7 py-3.5 rounded-2xl bg-[#162938]/55 hover:bg-[#162938]/80 backdrop-blur-xl border border-white/35 text-white font-bold text-sm tracking-[0.18em] uppercase shadow-2xl transition-all duration-300 hover:scale-105 focus-ring"
-            >
-              Нажмите, чтобы войти в Соларис-3
-            </button>
-            <p className="mt-2.5 text-xs text-white/75 drop-shadow">
-              Звучит тема входа Wuthering Waves 1.0 — «Saving Light»
-            </p>
-          </div>
-        )}
-      </main>
+          </motion.label>
 
-      {/* Нижняя строка статуса как в игровом лобби Wuthering Waves 1.0 */}
-      <footer className="relative z-20 w-full max-w-7xl mx-auto px-4 sm:px-8 pb-3 sm:pb-5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/70">
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          Сервер: Solaris-3 Archive · BGM: Saving Light (v1.0)
-        </span>
-        <span className="flex items-center gap-1">
-          <HelpCircle size={12} /> Нажми на плеер сверху для управления звуком
-        </span>
-      </footer>
+          <motion.label variants={itemVariants} className="block">
+            <span className="block text-[11px] font-medium text-gray-300 mb-1.5">
+              {mode === 'register' ? 'Пароль (мин. 8 символов, буквы и цифры)' : 'Пароль'}
+            </span>
+            <div className="relative flex items-center">
+              <Lock size={16} className="absolute left-3.5 text-gray-400 pointer-events-none" />
+              <input
+                type={showPass ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/[0.06] border border-white/15 text-sm text-ivory placeholder-gray-400/70 focus:outline-none focus:border-accent-light/70 focus:bg-white/[0.1] transition-all"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass((v) => !v)}
+                aria-label={showPass ? 'Скрыть пароль' : 'Показать пароль'}
+                className="absolute right-3 text-gray-400 hover:text-ivory transition-colors"
+              >
+                {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </motion.label>
+
+          {/* Чекбокс «Запомнить меня» */}
+          <motion.div
+            variants={itemVariants}
+            className="flex items-center justify-between text-xs text-gray-300 pt-0.5"
+          >
+            <label className="flex items-center gap-2 cursor-pointer hover:text-white transition-colors">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="rounded border-white/25 bg-black/40 accent-[#caa07d] cursor-pointer"
+              />
+              <span>Запомнить меня</span>
+            </label>
+            {demo && (
+              <span className="text-[11px] text-accent-light/90">Демо-режим</span>
+            )}
+          </motion.div>
+
+          {/* Кнопка отправки с анимацией блика */}
+          <motion.div variants={itemVariants} className="pt-2">
+            <motion.button
+              whileHover={{ scale: 1.015, boxShadow: '0 0 28px rgba(202, 160, 125, 0.45)' }}
+              whileTap={{ scale: 0.985 }}
+              type="submit"
+              disabled={busy}
+              className="group relative w-full py-3 rounded-xl bg-gradient-to-r from-[#caa07d] via-[#e5c5a8] to-[#f7ece6] text-[#0d0d0f] font-bold text-sm tracking-wide shadow-lg overflow-hidden transition-all disabled:opacity-50 focus-ring flex items-center justify-center gap-2"
+            >
+              {/* Пробегающий световой блик при наведении */}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/50 to-transparent"
+              />
+              <span>
+                {busy
+                  ? 'Подождите...'
+                  : mode === 'login'
+                  ? 'Войти в систему'
+                  : 'Зарегистрироваться'}
+              </span>
+              {!busy && (
+                <ArrowRight
+                  size={16}
+                  className="transition-transform duration-200 group-hover:translate-x-1"
+                />
+              )}
+            </motion.button>
+          </motion.div>
+        </form>
+
+        {/* Подвал карточки */}
+        <motion.div variants={itemVariants} className="mt-6 text-center text-xs text-gray-300">
+          {mode === 'login' ? (
+            <>
+              Нет аккаунта?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('register');
+                  setError(null);
+                }}
+                className="font-semibold text-ivory hover:text-accent-light underline underline-offset-4 transition-colors"
+              >
+                Зарегистрироваться
+              </button>
+            </>
+          ) : (
+            <>
+              Уже есть аккаунт?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setError(null);
+                }}
+                className="font-semibold text-ivory hover:text-accent-light underline underline-offset-4 transition-colors"
+              >
+                Войти
+              </button>
+            </>
+          )}
+        </motion.div>
+      </motion.div>
     </div>
   );
 };
