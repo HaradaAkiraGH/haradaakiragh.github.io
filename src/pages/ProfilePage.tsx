@@ -27,7 +27,6 @@ import {
   Award,
   Layers,
   Calendar,
-  Copy,
   RefreshCw,
 } from 'lucide-react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
@@ -41,7 +40,7 @@ import { ImagePlaceholder } from '../components/ui/ImagePlaceholder';
 import { apiGetProfile, apiSaveProfile, API_ENABLED } from '../utils/api';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
-/* ==================== КАТАЛОГ РАМОК АВАТАРКИ (СКРИН 2) ==================== */
+/* ==================== КАТАЛОГ РАМОК АВАТАРКИ ==================== */
 export interface AvatarFrameDef {
   id: string;
   name: string;
@@ -148,7 +147,7 @@ const AVATAR_FRAMES: AvatarFrameDef[] = [
   },
 ];
 
-/* ==================== КАТАЛОГ ТИТУЛОВ WUWA И ANIMEON (СКРИНЫ 3, 5, 6, 7) ==================== */
+/* ==================== КАТАЛОГ ТИТУЛОВ WUWA И ANIMEON ==================== */
 export interface ProfileTitleDef {
   id: string;
   name: string;
@@ -163,7 +162,6 @@ export interface ProfileTitleDef {
 }
 
 const PROFILE_TITLES: ProfileTitleDef[] = [
-  // Титулы из Wuthering Waves (Скрины 5, 6, 7)
   {
     id: 'star-law',
     name: 'Закон звёзд',
@@ -284,7 +282,6 @@ const PROFILE_TITLES: ProfileTitleDef[] = [
     emblem: '💎',
     accentCharacterId: 'calcharo',
   },
-  // Неоновые титулы в стиле AnimeOn (Скрины 1, 3, 4)
   {
     id: 'ghoul',
     name: 'ГУЛЬ',
@@ -428,7 +425,6 @@ const STATUS_META: Record<
   },
 };
 
-/* Утилита сжатия загружаемой картинки через Canvas, чтобы localStorage не переполнялся */
 function compressImageFile(file: File, maxW: number, maxH: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -476,7 +472,6 @@ const FramedAvatar = ({
 
   return (
     <div className={`relative ${boxSize} select-none shrink-0 flex items-center justify-center`}>
-      {/* Заднее неоновое свечение рамки */}
       {frame.glowStyle !== 'none' && (
         <div
           aria-hidden="true"
@@ -485,17 +480,14 @@ const FramedAvatar = ({
         />
       )}
 
-      {/* Декоративные рожки и коса для рамки «Пауэр» (Скрины 1, 2, 4) */}
       {frame.badge === 'power' && (
         <>
           <svg
             viewBox="0 0 120 120"
             className="absolute -inset-3 w-[calc(100%+24px)] h-[calc(100%+24px)] pointer-events-none z-20 drop-shadow-[0_0_8px_rgba(244,63,94,0.9)]"
           >
-            {/* Левый и правый демонические рожки */}
             <path d="M28 24 C22 6, 36 4, 42 18 Z" fill="#e11d48" stroke="#fecdd3" strokeWidth="1.2" />
             <path d="M92 24 C98 6, 84 4, 78 18 Z" fill="#e11d48" stroke="#fecdd3" strokeWidth="1.2" />
-            {/* Алая дуга косы справа */}
             <path
               d="M96 34 C118 55, 114 92, 86 108 C102 88, 104 60, 88 42 Z"
               fill="#fb7185"
@@ -514,7 +506,6 @@ const FramedAvatar = ({
         </>
       )}
 
-      {/* Декоративная корона для ■THE_KING_IS_AWAKE■ */}
       {frame.badge === 'king' && (
         <span
           aria-hidden="true"
@@ -524,7 +515,6 @@ const FramedAvatar = ({
         </span>
       )}
 
-      {/* Кошачьи ушки и полумесяц для «Телекошечка» */}
       {frame.badge === 'telecat' && (
         <>
           <svg
@@ -540,7 +530,6 @@ const FramedAvatar = ({
         </>
       )}
 
-      {/* Лепестки для «Сакура #4$04» */}
       {frame.badge === 'sakura' && (
         <>
           <span className="absolute -top-1 -right-1 z-20 text-sm pointer-events-none">🌸</span>
@@ -548,14 +537,12 @@ const FramedAvatar = ({
         </>
       )}
 
-      {/* Повязка для «Stellar Team» */}
       {frame.badge === 'band' && (
         <div className="absolute top-2 inset-x-2 z-20 py-0.5 rounded bg-gradient-to-r from-slate-700 via-slate-200 to-slate-700 text-[#09090b] text-[8px] font-black text-center tracking-widest uppercase shadow pointer-events-none">
           Stellar
         </div>
       )}
 
-      {/* Круг аватара */}
       <div
         className={`relative w-full h-full rounded-full overflow-hidden bg-[#12131c] flex items-center justify-center z-10 ${frame.ringClass}`}
       >
@@ -577,7 +564,7 @@ const FramedAvatar = ({
   );
 };
 
-/* ==================== КОМПОНЕНТ ПЛАШКИ ТИТУЛА (WUWA / ANIMEON) ==================== */
+/* ==================== КОМПОНЕНТ ПЛАШКИ ТИТУЛА ==================== */
 const TitleBadge = ({
   title,
   size = 'md',
@@ -597,13 +584,12 @@ const TitleBadge = ({
     <span
       className={`relative inline-flex items-center gap-2 rounded-full border font-bold tracking-wide overflow-hidden select-none ${pad} ${title.bgClass} ${title.borderClass} ${title.textClass} ${title.glowClass}`}
     >
-      {/* Полупрозрачный силуэт персонажа слева, как на титулах в Wuthering Waves (Скрины 5, 6, 7) */}
       {charArt && (
         <img
           src={charArt}
           alt=""
           aria-hidden="true"
-          className="absolute left-0 top-0 h-full w-14 object-cover object-top opacity-35 mask-image-fade pointer-events-none"
+          className="absolute left-0 top-0 h-full w-14 object-cover object-top opacity-35 pointer-events-none"
           style={{
             WebkitMaskImage: 'linear-gradient(to right, black 25%, transparent 100%)',
             maskImage: 'linear-gradient(to right, black 25%, transparent 100%)',
@@ -636,15 +622,12 @@ export const ProfilePage = () => {
   );
   const [collected] = useLocalStorage<string[]>('ww_map_collected', []);
 
-  // Вкладки правой колонки (как на AnimeOn)
   const [activeSection, setActiveSection] = useState<
     'main' | 'roster' | 'showcase' | 'favorites' | 'achievements'
   >('main');
 
-  // Режим «Как видят другие» (скрывает кнопки настройки)
   const [viewAsVisitor, setViewAsVisitor] = useState(false);
 
-  // Модальные окна: «Внешний вид» (рамки / титулы / шапка / аватар) и «Настройки» (текст / био / уровень)
   const [appearanceModal, setAppearanceModal] = useState<
     null | 'frames' | 'titles' | 'banner' | 'avatar'
   >(null);
@@ -652,7 +635,6 @@ export const ProfilePage = () => {
   const [copiedShare, setCopiedShare] = useState(false);
   const [syncingServer, setSyncingServer] = useState(false);
 
-  // Поля добавления персонажа в ростер
   const [pickId, setPickId] = useState('');
   const [pickLevel, setPickLevel] = useState(90);
   const [pickWeapon, setPickWeapon] = useState('');
@@ -661,7 +643,6 @@ export const ProfilePage = () => {
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Подтягиваем профиль с сервера при наличии токена
   useEffect(() => {
     if (!API_ENABLED || !token) return;
     apiGetProfile(token)
@@ -683,7 +664,6 @@ export const ProfilePage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Если залогинен — синхронизируем никнейм при первом заходе
   useEffect(() => {
     if (user?.nickname && profile.nickname === 'Rover') {
       setProfile((prev) => ({ ...prev, nickname: user.nickname }));
@@ -701,7 +681,6 @@ export const ProfilePage = () => {
   );
   const statusInfo = STATUS_META[custom.status] ?? STATUS_META.online;
 
-  // Подсчёт статистики и динамического уровня
   const mapPercent = useMemo(
     () => Math.round((collected.length / Math.max(1, MAP_MARKERS.length)) * 100),
     [collected],
@@ -726,7 +705,6 @@ export const ProfilePage = () => {
         era: custom.era || 'Магма',
       };
     }
-    // Автоматический расчёт от ростера, карты и Union Level
     const totalXp =
       profile.roster.length * 450 + collected.length * 120 + profile.unionLevel * 85 + 1200;
     const lvl = Math.max(1, Math.floor(totalXp / 250));
@@ -751,7 +729,6 @@ export const ProfilePage = () => {
     };
   }, [custom, profile.roster.length, profile.unionLevel, collected.length]);
 
-  // Переключение статуса в 1 клик
   const cycleStatus = () => {
     if (viewAsVisitor) return;
     const order: OnlineStatusType[] = ['online', 'ingame', 'dnd', 'offline'];
@@ -759,7 +736,6 @@ export const ProfilePage = () => {
     setCustom({ ...custom, status: next });
   };
 
-  // Загрузка собственной аватарки с компьютера
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -771,7 +747,6 @@ export const ProfilePage = () => {
     }
   };
 
-  // Загрузка собственной шапки с компьютера
   const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -783,7 +758,6 @@ export const ProfilePage = () => {
     }
   };
 
-  // Управление ростером + сохранение на сервер
   const syncRosterToServer = async (nextRoster: PlayerProfile['roster'], nextUid?: string) => {
     if (!API_ENABLED || !token) return;
     setSyncingServer(true);
@@ -849,7 +823,6 @@ export const ProfilePage = () => {
     [profile.roster],
   );
 
-  // Достижения профиля
   const achievements = useMemo(
     () => [
       {
@@ -902,7 +875,6 @@ export const ProfilePage = () => {
 
   return (
     <div className="space-y-6 pb-10">
-      {/* Скрытые инпуты для загрузки картинок с ПК */}
       <input
         ref={avatarFileInputRef}
         type="file"
@@ -918,9 +890,8 @@ export const ProfilePage = () => {
         className="hidden"
       />
 
-      {/* ==================== ВЕРХНИЙ БЛОК: БАННЕР + ПРОФИЛЬ (КАК НА ANIMEON) ==================== */}
+      {/* ==================== ВЕРХНИЙ БЛОК: БАННЕР + ПРОФИЛЬ ==================== */}
       <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-[#0b0c12] shadow-[0_25px_70px_rgba(0,0,0,0.8)]">
-        {/* Фоновая шапка профиля */}
         <div className="relative h-60 sm:h-72 md:h-80 w-full overflow-hidden">
           <img
             src={custom.bannerUrl || BANNER_PRESETS[0].url}
@@ -928,7 +899,6 @@ export const ProfilePage = () => {
             className="w-full h-full object-cover object-center scale-[1.01] transition-transform duration-700"
             draggable={false}
           />
-          {/* Мягкие градиенты сверху и снизу, чтобы текст читался идеально */}
           <div
             aria-hidden="true"
             className="absolute inset-0 bg-gradient-to-t from-[#0b0c12] via-[#0b0c12]/65 to-black/20"
@@ -938,7 +908,6 @@ export const ProfilePage = () => {
             className="absolute inset-0 bg-gradient-to-r from-[#0b0c12]/80 via-transparent to-[#0b0c12]/40"
           />
 
-          {/* Кнопка «Изменить фон» в правом верхнем углу шапки */}
           {!viewAsVisitor && (
             <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
               <button
@@ -952,7 +921,6 @@ export const ProfilePage = () => {
             </div>
           )}
 
-          {/* Индикатор режима гостя, если включён «Как видят другие» */}
           {viewAsVisitor && (
             <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
               <button
@@ -967,10 +935,8 @@ export const ProfilePage = () => {
           )}
         </div>
 
-        {/* Контент поверх нижней части шапки */}
         <div className="relative z-10 -mt-28 sm:-mt-32 px-5 sm:px-8 pb-6">
           <div className="flex flex-col md:flex-row gap-6 items-start">
-            {/* Аватар с рамкой и быстрой кнопкой смены */}
             <div className="relative group mx-auto md:mx-0">
               <FramedAvatar
                 src={custom.avatarUrl}
@@ -991,9 +957,7 @@ export const ProfilePage = () => {
               )}
             </div>
 
-            {/* Правая часть: Никнейм, @username, титул, статус в сети, дата регистрации, био */}
             <div className="flex-1 min-w-0 w-full text-center md:text-left">
-              {/* Никнейм и @username */}
               <div className="flex flex-col md:flex-row md:items-baseline gap-1 md:gap-3">
                 <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow">
                   {profile.nickname}
@@ -1003,9 +967,7 @@ export const ProfilePage = () => {
                 </span>
               </div>
 
-              {/* Ряд бейджей: Игровой титул WuWa + дополнительный бейдж + счётчик + дата */}
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mt-3">
-                {/* Главный титул (кликабелен для быстрой смены) */}
                 <button
                   type="button"
                   onClick={() => !viewAsVisitor && setAppearanceModal('titles')}
@@ -1015,7 +977,6 @@ export const ProfilePage = () => {
                   <TitleBadge title={currentTitle} />
                 </button>
 
-                {/* Бейдж статуса / подписки */}
                 {custom.secondaryBadge && (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950/60 border border-purple-400/40 text-purple-200 text-xs font-bold shadow-[0_0_14px_rgba(168,85,247,0.25)]">
                     <Crown size={12} className="text-purple-300" />
@@ -1023,7 +984,6 @@ export const ProfilePage = () => {
                   </span>
                 )}
 
-                {/* Бейдж ростера / прогресса */}
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.06] border border-white/10 text-xs font-semibold text-gray-200">
                   <Sparkles size={12} className="text-accent-light" />
                   <span>
@@ -1031,13 +991,11 @@ export const ProfilePage = () => {
                   </span>
                 </span>
 
-                {/* Бейдж UID */}
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.06] border border-white/10 text-xs font-mono text-gray-300">
                   UID: {profile.uid} · UL {profile.unionLevel}
                 </span>
               </div>
 
-              {/* Статус («В сети» / «Не в сети») + С какого времени зарегистрирован */}
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-3 gap-y-1 mt-3 text-xs">
                 <button
                   type="button"
@@ -1063,14 +1021,12 @@ export const ProfilePage = () => {
                 </span>
               </div>
 
-              {/* Декоративная HEX-строка как на скрине 1 и 4 */}
               {custom.hexSignature && (
                 <p className="mt-2 font-mono text-[11px] tracking-[0.22em] text-gray-500/80 uppercase truncate">
                   {custom.hexSignature}
                 </p>
               )}
 
-              {/* Многострочное описание профиля (Био) */}
               {bioLines.length > 0 && (
                 <div className="mt-3.5 space-y-1 text-xs sm:text-[13px] text-gray-200/95 font-medium leading-relaxed max-w-2xl">
                   {bioLines.map((line, idx) => (
@@ -1083,7 +1039,6 @@ export const ProfilePage = () => {
             </div>
           </div>
 
-          {/* Кнопки действий справа внизу шапки: Поделиться / Как видят другие / Внешний вид / Настройки */}
           {!viewAsVisitor && (
             <div className="flex flex-wrap items-center justify-center md:justify-end gap-2.5 mt-6 pt-4 border-t border-white/[0.07]">
               <button
@@ -1137,9 +1092,7 @@ export const ProfilePage = () => {
 
       {/* ==================== НИЖНЯЯ СЕТКА: КОНТЕНТ СЛЕВА + МЕНЮ СПРАВА ==================== */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr,260px] gap-6 items-start">
-        {/* ЛЕВАЯ КОЛОНКА */}
         <div className="space-y-5 min-w-0">
-          {/* Плашка статуса подписки / пропуска Соларис */}
           <div className="rounded-2xl p-4 sm:px-6 bg-gradient-to-r from-[#1c1635]/90 via-[#151324]/90 to-[#12121a]/90 border border-purple-500/25 flex items-center justify-between gap-4 shadow-lg">
             <div>
               <p className="text-sm font-extrabold text-purple-300 tracking-wide">
@@ -1154,14 +1107,13 @@ export const ProfilePage = () => {
             </span>
           </div>
 
-          {/* КАРТОЧКА УРОВНЯ ПРОФИЛЯ (СКРИН 1 и 4) */}
+          {/* КАРТОЧКА УРОВНЯ ПРОФИЛЯ */}
           <div className="relative overflow-hidden rounded-2xl p-5 sm:p-6 bg-gradient-to-r from-[#261214]/90 via-[#141218]/95 to-[#121216]/95 border border-rose-500/25 shadow-[0_15px_45px_rgba(0,0,0,0.65)]">
             <div
               aria-hidden="true"
               className="pointer-events-none absolute -left-10 top-1/2 -translate-y-1/2 w-40 h-40 rounded-full bg-rose-600/20 blur-3xl"
             />
             <div className="relative flex items-center gap-4 sm:gap-5">
-              {/* Круглый неоновый медальон уровня */}
               <div className="w-16 h-16 rounded-full bg-gradient-to-b from-rose-500/25 to-orange-950/60 border-2 border-rose-500/60 shadow-[0_0_24px_rgba(244,63,94,0.45)] flex items-center justify-center shrink-0">
                 <span className="text-sm sm:text-base font-black text-orange-100 tracking-tight">
                   {computedLevelData.shortLabel}
@@ -1183,7 +1135,6 @@ export const ProfilePage = () => {
                   </span>
                 </div>
 
-                {/* Прогресс-бар */}
                 <div className="h-2.5 rounded-full bg-black/60 border border-white/[0.06] overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
@@ -1206,7 +1157,7 @@ export const ProfilePage = () => {
             </div>
           </div>
 
-          {/* 4 ПЛИТКИ СТАТИСТИКИ (КАК НА СКРИНЕ 1) */}
+          {/* 4 ПЛИТКИ СТАТИСТИКИ */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
             <div className="glass-panel p-4 relative overflow-hidden">
               <Clock size={15} className="absolute top-3.5 right-3.5 text-gray-500" />
@@ -1249,7 +1200,6 @@ export const ProfilePage = () => {
             </div>
           </div>
 
-          {/* ДИНАМИЧЕСКАЯ СЕКЦИЯ В ЗАВИСИМОСТИ ОТ ВЫБРАННОЙ ВКЛАДКИ СПРАВА */}
           <AnimatePresence mode="wait">
             <motion.div
               key={activeSection}
@@ -1258,7 +1208,6 @@ export const ProfilePage = () => {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.2 }}
             >
-              {/* ВКЛАДКА: ОСНОВНОЕ ИЛИ МОЙ РОСТЕР */}
               {(activeSection === 'main' || activeSection === 'roster') && (
                 <div className="glass-panel p-5 sm:p-6 space-y-5">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1335,7 +1284,6 @@ export const ProfilePage = () => {
                     </div>
                   )}
 
-                  {/* Форма быстрого добавления в ростер */}
                   {!viewAsVisitor && (
                     <div className="pt-4 border-t border-white/10">
                       <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-2">
@@ -1392,7 +1340,6 @@ export const ProfilePage = () => {
                 </div>
               )}
 
-              {/* ВКЛАДКА: ВИТРИНА ИЛИ ЛЮБИМОЕ */}
               {(activeSection === 'showcase' || activeSection === 'favorites') && (
                 <div className="glass-panel p-5 sm:p-6 space-y-5">
                   <div>
@@ -1404,7 +1351,6 @@ export const ProfilePage = () => {
                     </p>
                   </div>
 
-                  {/* Закреплённые карточки */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
                     {custom.favoriteCharIds.map((cid) => {
                       const char = getCharacterById(cid);
@@ -1441,7 +1387,6 @@ export const ProfilePage = () => {
                     })}
                   </div>
 
-                  {/* Выбор из всех персонажей */}
                   {!viewAsVisitor && (
                     <div className="pt-4 border-t border-white/10">
                       <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2.5">
@@ -1472,7 +1417,6 @@ export const ProfilePage = () => {
                 </div>
               )}
 
-              {/* ВКЛАДКА: ДОСТИЖЕНИЯ */}
               {activeSection === 'achievements' && (
                 <div className="glass-panel p-5 sm:p-6 space-y-4">
                   <div>
@@ -1518,7 +1462,7 @@ export const ProfilePage = () => {
           </AnimatePresence>
         </div>
 
-        {/* ПРАВАЯ КОЛОНКА НАВИГАЦИИ ПО ПРОФИЛЮ (КАК НА ANIMEON) */}
+        {/* ПРАВАЯ КОЛОНКА НАВИГАЦИИ ПО ПРОФИЛЮ */}
         <div className="glass-panel p-2.5 space-y-1">
           {(
             [
@@ -1550,7 +1494,7 @@ export const ProfilePage = () => {
         </div>
       </div>
 
-      {/* ==================== МОДАЛКА «ВНЕШНИЙ ВИД»: РАМКИ, ТИТУЛЫ WUWA, ШАПКА, АВАТАР ==================== */}
+      {/* ==================== МОДАЛКА «ВНЕШНИЙ ВИД» ==================== */}
       <AnimatePresence>
         {appearanceModal && (
           <div
@@ -1565,7 +1509,6 @@ export const ProfilePage = () => {
               onClick={(e) => e.stopPropagation()}
               className="w-full max-w-4xl max-h-[88vh] overflow-y-auto rounded-3xl bg-[#0e0f17] border border-white/15 shadow-[0_25px_90px_rgba(0,0,0,0.9)] p-6 sm:p-8"
             >
-              {/* Шапка модалки и переключатель 4 разделов кастомизации */}
               <div className="flex items-center justify-between gap-4 pb-5 border-b border-white/10">
                 <div className="flex flex-wrap gap-2">
                   {(
@@ -1599,7 +1542,6 @@ export const ProfilePage = () => {
                 </button>
               </div>
 
-              {/* 1. ВЫБОР РАМКИ АВАТАРА (КАК НА СКРИНЕ 2) */}
               {appearanceModal === 'frames' && (
                 <div className="mt-6 space-y-4">
                   <div className="flex items-center justify-between text-xs text-gray-400">
@@ -1665,7 +1607,6 @@ export const ProfilePage = () => {
                 </div>
               )}
 
-              {/* 2. ВЫБОР ТИТУЛА (СКРИНЫ 3, 5, 6, 7) */}
               {appearanceModal === 'titles' && (
                 <div className="mt-6 space-y-3">
                   <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
@@ -1706,7 +1647,6 @@ export const ProfilePage = () => {
                 </div>
               )}
 
-              {/* 3. СМЕНА АВАТАРКИ */}
               {appearanceModal === 'avatar' && (
                 <div className="mt-6 space-y-5">
                   <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-2xl bg-white/[0.03] border border-white/10">
@@ -1765,13 +1705,12 @@ export const ProfilePage = () => {
                             />
                           </button>
                         );
-                      })}
+                          })}
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* 4. СМЕНА ШАПКИ ПРОФИЛЯ (БАННЕРА) */}
               {appearanceModal === 'banner' && (
                 <div className="mt-6 space-y-5">
                   <div className="space-y-3 p-4 rounded-2xl bg-white/[0.03] border border-white/10">
@@ -1831,7 +1770,7 @@ export const ProfilePage = () => {
         )}
       </AnimatePresence>
 
-      {/* ==================== МОДАЛКА «НАСТРОЙКИ»: НИК, @USERNAME, ОПИСАНИЕ, ДАТА, УРОВЕНЬ ==================== */}
+      {/* ==================== МОДАЛКА «НАСТРОЙКИ» ==================== */}
       <AnimatePresence>
         {settingsModalOpen && (
           <div
@@ -1968,7 +1907,6 @@ export const ProfilePage = () => {
                 </label>
               </div>
 
-              {/* Настройка уровня и XP */}
               <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-white">Параметры уровня и XP</span>
