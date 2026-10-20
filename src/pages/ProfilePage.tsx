@@ -1,6 +1,6 @@
-// Профиль игрока в стиле AnimeOn + Wuthering Waves:
-// Кастомный баннер, аватарка, рамки (Пауэр, Король, Телекошечка и др.),
-// игровые титулы WuWa, статус в сети, дата регистрации, уровень/XP, витрина и ростер
+// Профиль игрока Stellar Wiki:
+// Расширенный макет, анимированные SVG-рамки аватара, игровые титулы WuWa,
+// фактическая дата регистрации, автоматический статус онлайна и расчёт уровня
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,7 +11,6 @@ import {
   EyeOff,
   Palette,
   Settings,
-  Crown,
   Trophy,
   Clock,
   Users,
@@ -20,14 +19,10 @@ import {
   Check,
   X,
   Upload,
-  UserPlus,
-  Trash2,
   Heart,
   LayoutGrid,
   Award,
-  Layers,
   Calendar,
-  RefreshCw,
 } from 'lucide-react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useAuth } from '../hooks/useAuth';
@@ -35,12 +30,11 @@ import { PlayerProfile } from '../data/types';
 import { CHARACTERS, getCharacterById } from '../data/characters';
 import { MAP_MARKERS } from '../data/map';
 import { IMAGES } from '../data/images';
-import { ELEMENTS, WEAPON_LABELS } from '../utils/constants';
 import { ImagePlaceholder } from '../components/ui/ImagePlaceholder';
 import { apiGetProfile, apiSaveProfile, API_ENABLED } from '../utils/api';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
-/* ==================== КАТАЛОГ РАМОК АВАТАРКИ ==================== */
+/* ==================== КАТАЛОГ КАСТОМНЫХ SVG-РАМОК АВАТАРКИ ==================== */
 export interface AvatarFrameDef {
   id: string;
   name: string;
@@ -48,104 +42,436 @@ export interface AvatarFrameDef {
   previewBg: string;
   ringClass: string;
   glowStyle: string;
-  badge?: 'power' | 'king' | 'telecat' | 'sakura' | 'band';
 }
 
 const AVATAR_FRAMES: AvatarFrameDef[] = [
   {
-    id: 'power',
-    name: 'Пауэр',
+    id: 'solaris-astrolabe',
+    name: 'Астролябия Соларис',
     rarity: 'Легендарный',
-    previewBg: 'from-amber-950/60 via-red-950/40 to-[#0d0d12]',
-    ringClass: 'border-[3px] border-rose-500 shadow-[0_0_28px_rgba(244,63,94,0.75)]',
-    glowStyle: 'radial-gradient(circle, rgba(244,63,94,0.45) 0%, transparent 70%)',
-    badge: 'power',
+    previewBg: 'from-[#2b2114] via-[#14110d] to-[#0a0b10]',
+    ringClass: 'border-2 border-[#f7ece6]/80 shadow-[0_0_28px_rgba(230,201,168,0.65)]',
+    glowStyle: 'radial-gradient(circle, rgba(230,201,168,0.45) 0%, transparent 70%)',
   },
   {
-    id: 'king',
-    name: '■THE_KING_IS_AWAKE■',
+    id: 'camellya-bloom',
+    name: 'Алый Расцвет Камеллии',
     rarity: 'Легендарный',
-    previewBg: 'from-amber-900/50 via-purple-950/50 to-[#0d0d12]',
-    ringClass: 'border-[3px] border-amber-400 shadow-[0_0_30px_rgba(168,85,247,0.8)]',
+    previewBg: 'from-rose-950/80 via-[#1a0b12] to-[#0a0b10]',
+    ringClass: 'border-2 border-rose-400 shadow-[0_0_30px_rgba(244,63,94,0.8)]',
+    glowStyle: 'radial-gradient(circle, rgba(244,63,94,0.5) 0%, transparent 70%)',
+  },
+  {
+    id: 'shorekeeper-butterfly',
+    name: 'Хранительница Берега',
+    rarity: 'Легендарный',
+    previewBg: 'from-cyan-950/80 via-[#0b1528] to-[#0a0b10]',
+    ringClass: 'border-2 border-cyan-300 shadow-[0_0_30px_rgba(56,189,248,0.8)]',
+    glowStyle: 'radial-gradient(circle, rgba(56,189,248,0.5) 0%, transparent 70%)',
+  },
+  {
+    id: 'jinhsi-dragon',
+    name: 'Магистрат Цзиньчжоу',
+    rarity: 'Легендарный',
+    previewBg: 'from-amber-900/60 via-teal-950/50 to-[#0a0b10]',
+    ringClass: 'border-2 border-amber-200 shadow-[0_0_28px_rgba(253,230,138,0.75)]',
+    glowStyle: 'radial-gradient(circle, rgba(251,191,36,0.45) 0%, transparent 70%)',
+  },
+  {
+    id: 'changli-phoenix',
+    name: 'Перо Вечного Феникса',
+    rarity: 'Эпический',
+    previewBg: 'from-orange-950/80 via-red-950/40 to-[#0a0b10]',
+    ringClass: 'border-2 border-orange-400 shadow-[0_0_26px_rgba(249,115,22,0.75)]',
+    glowStyle: 'radial-gradient(circle, rgba(249,115,22,0.45) 0%, transparent 70%)',
+  },
+  {
+    id: 'havoc-abyss',
+    name: 'Сингулярность Хаоса',
+    rarity: 'Эпический',
+    previewBg: 'from-purple-950/80 via-fuchsia-950/40 to-[#0a0b10]',
+    ringClass: 'border-2 border-fuchsia-400 shadow-[0_0_28px_rgba(192,132,252,0.8)]',
     glowStyle: 'radial-gradient(circle, rgba(168,85,247,0.5) 0%, transparent 70%)',
-    badge: 'king',
   },
   {
-    id: 'telecat',
-    name: 'Телекошечка',
+    id: 'glacio-frost',
+    name: 'Хрустальный Иней',
     rarity: 'Эпический',
-    previewBg: 'from-sky-900/50 via-cyan-950/40 to-[#0d0d12]',
-    ringClass: 'border-[3px] border-sky-400 shadow-[0_0_26px_rgba(56,189,248,0.75)]',
-    glowStyle: 'radial-gradient(circle, rgba(56,189,248,0.45) 0%, transparent 70%)',
-    badge: 'telecat',
+    previewBg: 'from-sky-950/80 via-indigo-950/40 to-[#0a0b10]',
+    ringClass: 'border-2 border-sky-200 shadow-[0_0_25px_rgba(125,211,252,0.75)]',
+    glowStyle: 'radial-gradient(circle, rgba(125,211,252,0.45) 0%, transparent 70%)',
   },
   {
-    id: 'sakura',
-    name: 'Сакура #4$04',
-    rarity: 'Эпический',
-    previewBg: 'from-fuchsia-900/50 via-purple-950/40 to-[#0d0d12]',
-    ringClass: 'border-[3px] border-pink-300 shadow-[0_0_26px_rgba(244,114,182,0.75)]',
-    glowStyle: 'radial-gradient(circle, rgba(244,114,182,0.45) 0%, transparent 70%)',
-    badge: 'sakura',
-  },
-  {
-    id: 'rainbow',
-    name: 'Радуга',
-    rarity: 'Эпический',
-    previewBg: 'from-purple-900/50 via-pink-950/30 to-[#0d0d12]',
-    ringClass: 'border-[3px] border-fuchsia-400 shadow-[0_0_25px_rgba(192,132,252,0.7)]',
-    glowStyle: 'conic-gradient(from 0deg, #ec4899, #8b5cf6, #06b6d4, #eab308, #ec4899)',
-  },
-  {
-    id: 'gold',
-    name: 'Золотая',
+    id: 'aero-tempest',
+    name: 'Ветра Хуанлуна',
     rarity: 'Редкий',
-    previewBg: 'from-sky-950/50 via-[#121622] to-[#0d0d12]',
-    ringClass: 'border-[3px] border-[#e6c9a8] shadow-[0_0_22px_rgba(202,160,125,0.7)]',
-    glowStyle: 'radial-gradient(circle, rgba(202,160,125,0.4) 0%, transparent 70%)',
+    previewBg: 'from-emerald-950/80 via-teal-950/40 to-[#0a0b10]',
+    ringClass: 'border-2 border-emerald-400 shadow-[0_0_24px_rgba(52,211,153,0.7)]',
+    glowStyle: 'radial-gradient(circle, rgba(52,211,153,0.4) 0%, transparent 70%)',
   },
   {
-    id: 'cyan',
-    name: 'Бирюзовая',
-    rarity: 'Обычный',
-    previewBg: 'from-cyan-950/40 to-[#0d0d12]',
-    ringClass: 'border-[3px] border-cyan-400 shadow-[0_0_18px_rgba(34,211,238,0.55)]',
-    glowStyle: 'radial-gradient(circle, rgba(34,211,238,0.3) 0%, transparent 70%)',
-  },
-  {
-    id: 'purple',
-    name: 'Фиолетовая',
-    rarity: 'Обычный',
-    previewBg: 'from-violet-950/40 to-[#0d0d12]',
-    ringClass: 'border-[3px] border-violet-500 shadow-[0_0_18px_rgba(139,92,246,0.55)]',
-    glowStyle: 'radial-gradient(circle, rgba(139,92,246,0.3) 0%, transparent 70%)',
-  },
-  {
-    id: 'crimson',
-    name: 'Красная',
-    rarity: 'Обычный',
-    previewBg: 'from-red-950/40 to-[#0d0d12]',
-    ringClass: 'border-[3px] border-red-500 shadow-[0_0_18px_rgba(239,68,68,0.55)]',
-    glowStyle: 'radial-gradient(circle, rgba(239,68,68,0.3) 0%, transparent 70%)',
-  },
-  {
-    id: 'band',
-    name: 'Stellar Team',
-    rarity: 'Обычный',
-    previewBg: 'from-slate-900/60 to-[#0d0d12]',
-    ringClass: 'border-[3px] border-slate-300 shadow-[0_0_16px_rgba(255,255,255,0.35)]',
-    glowStyle: 'radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%)',
-    badge: 'band',
+    id: 'royal-gold',
+    name: 'Золото Архонта',
+    rarity: 'Редкий',
+    previewBg: 'from-yellow-950/60 to-[#0a0b10]',
+    ringClass: 'border-2 border-[#e6c9a8] shadow-[0_0_20px_rgba(202,160,125,0.65)]',
+    glowStyle: 'radial-gradient(circle, rgba(202,160,125,0.35) 0%, transparent 70%)',
   },
   {
     id: 'none',
     name: 'Без рамки',
     rarity: 'Обычный',
-    previewBg: 'from-zinc-900/40 to-[#0d0d12]',
+    previewBg: 'from-zinc-900/40 to-[#0a0b10]',
     ringClass: 'border-2 border-white/20',
     glowStyle: 'none',
   },
 ];
+
+/* ==================== ВЕКТОРНЫЙ ОРНАМЕНТ РАМОК (SVG + АНИМАЦИЯ) ==================== */
+const FrameOrnamentSVG = ({ frameId }: { frameId: string }) => {
+  switch (frameId) {
+    case 'solaris-astrolabe':
+      return (
+        <div className="absolute -inset-3.5 pointer-events-none z-20">
+          {/* Внешнее вращающееся кольцо астролябии */}
+          <svg
+            viewBox="0 0 140 140"
+            className="w-full h-full animate-[spin_24s_linear_infinite] drop-shadow-[0_0_8px_rgba(230,201,168,0.8)]"
+          >
+            <defs>
+              <linearGradient id="astrolabeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#fff7ed" />
+                <stop offset="50%" stopColor="#caa07d" />
+                <stop offset="100%" stopColor="#78553a" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx="70"
+              cy="70"
+              r="64"
+              fill="none"
+              stroke="url(#astrolabeGrad)"
+              strokeWidth="1.5"
+              strokeDasharray="10 6 2 6"
+            />
+            <circle
+              cx="70"
+              cy="70"
+              r="59"
+              fill="none"
+              stroke="#f7ece6"
+              strokeWidth="0.8"
+              strokeOpacity="0.5"
+              strokeDasharray="24 12"
+            />
+            {/* Четыре орбитальных узла */}
+            <polygon points="70,2 73,8 70,14 67,8" fill="#fff7ed" />
+            <polygon points="70,138 73,132 70,126 67,132" fill="#caa07d" />
+            <polygon points="2,70 8,73 14,70 8,67" fill="#caa07d" />
+            <polygon points="138,70 132,73 126,70 132,67" fill="#fff7ed" />
+          </svg>
+          {/* Статичная верхняя корона-звезда Соларис */}
+          <svg
+            viewBox="0 0 140 140"
+            className="absolute inset-0 w-full h-full drop-shadow-[0_0_10px_rgba(255,247,237,0.95)]"
+          >
+            <path
+              d="M70 0 L73 9 L82 9 L75 13 L77 21 L70 16 L63 21 L65 13 L58 9 L67 9 Z"
+              fill="#fff7ed"
+            />
+          </svg>
+        </div>
+      );
+
+    case 'camellya-bloom':
+      return (
+        <div className="absolute -inset-3.5 pointer-events-none z-20">
+          <svg
+            viewBox="0 0 140 140"
+            className="w-full h-full animate-[spin_32s_linear_infinite_reverse] drop-shadow-[0_0_10px_rgba(244,63,94,0.9)]"
+          >
+            <defs>
+              <linearGradient id="camellyaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#fda4af" />
+                <stop offset="50%" stopColor="#e11d48" />
+                <stop offset="100%" stopColor="#881337" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx="70"
+              cy="70"
+              r="62"
+              fill="none"
+              stroke="url(#camellyaGrad)"
+              strokeWidth="2"
+              strokeDasharray="16 8"
+            />
+            {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+              <g key={deg} transform={`rotate(${deg} 70 70)`}>
+                <path
+                  d="M70 4 C74 10, 74 14, 70 18 C66 14, 66 10, 70 4 Z"
+                  fill="#fb7185"
+                />
+              </g>
+            ))}
+          </svg>
+          {/* Крупный багровый цветок Камеллии в правом нижнем углу */}
+          <svg
+            viewBox="0 0 140 140"
+            className="absolute inset-0 w-full h-full drop-shadow-[0_0_12px_rgba(225,29,72,0.95)]"
+          >
+            <g transform="translate(110, 110)">
+              {[0, 60, 120, 180, 240, 300].map((d) => (
+                <path
+                  key={d}
+                  transform={`rotate(${d})`}
+                  d="M0 -14 C5 -8, 5 -2, 0 0 C-5 -2, -5 -8, 0 -14 Z"
+                  fill="#e11d48"
+                  stroke="#fecdd3"
+                  strokeWidth="0.8"
+                />
+              ))}
+              <circle cx="0" cy="0" r="3" fill="#fff1f2" />
+            </g>
+          </svg>
+        </div>
+      );
+
+    case 'shorekeeper-butterfly':
+      return (
+        <div className="absolute -inset-3.5 pointer-events-none z-20">
+          <svg
+            viewBox="0 0 140 140"
+            className="w-full h-full animate-[spin_28s_linear_infinite] drop-shadow-[0_0_10px_rgba(56,189,248,0.9)]"
+          >
+            <defs>
+              <linearGradient id="shoreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#e0f2fe" />
+                <stop offset="50%" stopColor="#38bdf8" />
+                <stop offset="100%" stopColor="#1d4ed8" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx="70"
+              cy="70"
+              r="63"
+              fill="none"
+              stroke="url(#shoreGrad)"
+              strokeWidth="1.8"
+              strokeDasharray="6 6"
+            />
+            <circle
+              cx="70"
+              cy="70"
+              r="58"
+              fill="none"
+              stroke="#bae6fd"
+              strokeWidth="1"
+              strokeDasharray="30 15"
+            />
+          </svg>
+          {/* Эфирные бабочки Хранительницы Берега */}
+          <svg
+            viewBox="0 0 140 140"
+            className="absolute inset-0 w-full h-full drop-shadow-[0_0_12px_rgba(56,189,248,1)]"
+          >
+            <g transform="translate(24, 22) rotate(-25)">
+              <path
+                d="M0 0 C-10 -10, -16 2, -4 6 C-12 10, -6 18, 0 8 C6 18, 12 10, 4 6 C16 2, 10 -10, 0 0 Z"
+                fill="#7dd3fc"
+                stroke="#e0f2fe"
+                strokeWidth="0.8"
+              />
+            </g>
+            <g transform="translate(118, 108) rotate(20) scale(0.85)">
+              <path
+                d="M0 0 C-10 -10, -16 2, -4 6 C-12 10, -6 18, 0 8 C6 18, 12 10, 4 6 C16 2, 10 -10, 0 0 Z"
+                fill="#38bdf8"
+                stroke="#e0f2fe"
+                strokeWidth="0.8"
+              />
+            </g>
+          </svg>
+        </div>
+      );
+
+    case 'jinhsi-dragon':
+      return (
+        <div className="absolute -inset-3.5 pointer-events-none z-20">
+          <svg
+            viewBox="0 0 140 140"
+            className="w-full h-full drop-shadow-[0_0_10px_rgba(253,230,138,0.85)]"
+          >
+            <defs>
+              <linearGradient id="jinhsiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#fef08a" />
+                <stop offset="50%" stopColor="#f59e0b" />
+                <stop offset="100%" stopColor="#99f6e4" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx="70"
+              cy="70"
+              r="62"
+              fill="none"
+              stroke="url(#jinhsiGrad)"
+              strokeWidth="2.2"
+            />
+            {/* Рога и корона небесного дракона сверху */}
+            <path
+              d="M45 14 C36 2, 52 0, 60 10 L70 2 L80 10 C88 0, 104 2, 95 14"
+              fill="none"
+              stroke="#fef08a"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+            <circle cx="70" cy="132" r="4" fill="#99f6e4" stroke="#fef08a" strokeWidth="1.2" />
+          </svg>
+        </div>
+      );
+
+    case 'changli-phoenix':
+      return (
+        <div className="absolute -inset-3.5 pointer-events-none z-20">
+          <svg
+            viewBox="0 0 140 140"
+            className="w-full h-full drop-shadow-[0_0_10px_rgba(249,115,22,0.9)]"
+          >
+            <defs>
+              <linearGradient id="phoenixGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#dc2626" />
+                <stop offset="50%" stopColor="#f97316" />
+                <stop offset="100%" stopColor="#fef08a" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx="70"
+              cy="70"
+              r="62"
+              fill="none"
+              stroke="url(#phoenixGrad)"
+              strokeWidth="2.2"
+              strokeDasharray="28 6"
+            />
+            {/* Огненные перья по бокам */}
+            <path
+              d="M10 85 C2 65, 10 40, 24 24 C16 45, 16 65, 20 82 Z"
+              fill="url(#phoenixGrad)"
+            />
+            <path
+              d="M130 85 C138 65, 130 40, 116 24 C124 45, 124 65, 120 82 Z"
+              fill="url(#phoenixGrad)"
+            />
+            <polygon points="70,1 74,10 70,7 66,10" fill="#fef08a" />
+          </svg>
+        </div>
+      );
+
+    case 'havoc-abyss':
+      return (
+        <div className="absolute -inset-3.5 pointer-events-none z-20">
+          <svg
+            viewBox="0 0 140 140"
+            className="w-full h-full animate-[spin_18s_linear_infinite] drop-shadow-[0_0_12px_rgba(192,132,252,0.95)]"
+          >
+            <defs>
+              <linearGradient id="havocGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#f0abfc" />
+                <stop offset="50%" stopColor="#a855f7" />
+                <stop offset="100%" stopColor="#4c1d95" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx="70"
+              cy="70"
+              r="63"
+              fill="none"
+              stroke="url(#havocGrad)"
+              strokeWidth="2"
+              strokeDasharray="18 10 4 10"
+            />
+            {[0, 60, 120, 180, 240, 300].map((d) => (
+              <polygon
+                key={d}
+                transform={`rotate(${d} 70 70)`}
+                points="70,2 73,9 67,9"
+                fill="#e879f9"
+              />
+            ))}
+          </svg>
+        </div>
+      );
+
+    case 'glacio-frost':
+      return (
+        <div className="absolute -inset-3.5 pointer-events-none z-20">
+          <svg
+            viewBox="0 0 140 140"
+            className="w-full h-full drop-shadow-[0_0_10px_rgba(125,211,252,0.9)]"
+          >
+            <circle
+              cx="70"
+              cy="70"
+              r="62"
+              fill="none"
+              stroke="#bae6fd"
+              strokeWidth="1.8"
+              strokeDasharray="12 4"
+            />
+            {[0, 45, 90, 135, 180, 225, 270, 315].map((d) => (
+              <polygon
+                key={d}
+                transform={`rotate(${d} 70 70)`}
+                points="70,1 73,8 70,13 67,8"
+                fill="#e0f2fe"
+                stroke="#38bdf8"
+                strokeWidth="0.6"
+              />
+            ))}
+          </svg>
+        </div>
+      );
+
+    case 'aero-tempest':
+      return (
+        <div className="absolute -inset-3 pointer-events-none z-20">
+          <svg
+            viewBox="0 0 140 140"
+            className="w-full h-full animate-[spin_20s_linear_infinite] drop-shadow-[0_0_10px_rgba(52,211,153,0.85)]"
+          >
+            <circle
+              cx="70"
+              cy="70"
+              r="62"
+              fill="none"
+              stroke="#6ee7b7"
+              strokeWidth="2"
+              strokeDasharray="32 14"
+            />
+          </svg>
+        </div>
+      );
+
+    case 'royal-gold':
+      return (
+        <div className="absolute -inset-2.5 pointer-events-none z-20">
+          <svg
+            viewBox="0 0 140 140"
+            className="w-full h-full drop-shadow-[0_0_8px_rgba(230,201,168,0.75)]"
+          >
+            <circle cx="70" cy="70" r="63" fill="none" stroke="#e6c9a8" strokeWidth="1.4" />
+            <polygon points="70,1 73,7 70,11 67,7" fill="#fff7ed" />
+            <polygon points="70,139 73,133 70,129 67,133" fill="#fff7ed" />
+            <polygon points="1,70 7,73 11,70 7,67" fill="#fff7ed" />
+            <polygon points="139,70 133,73 129,70 133,67" fill="#fff7ed" />
+          </svg>
+        </div>
+      );
+
+    default:
+      return null;
+  }
+};
 
 /* ==================== КАТАЛОГ ТИТУЛОВ WUWA И ANIMEON ==================== */
 export interface ProfileTitleDef {
@@ -321,7 +647,7 @@ const PROFILE_TITLES: ProfileTitleDef[] = [
 const BANNER_PRESETS = [
   {
     id: 'sunset-wings',
-    name: 'Багровый закат (AnimeOn)',
+    name: 'Багровый закат',
     url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1600&q=80',
   },
   {
@@ -347,23 +673,13 @@ const BANNER_PRESETS = [
 ];
 
 /* ==================== ТИП КАСТОМИЗАЦИИ ПРОФИЛЯ ==================== */
-export type OnlineStatusType = 'online' | 'ingame' | 'dnd' | 'offline';
-
 export interface ProfileCustomization {
   username: string;
   avatarUrl: string;
   bannerUrl: string;
   frameId: string;
   titleId: string;
-  secondaryBadge: string;
-  status: OnlineStatusType;
-  registeredAt: string;
-  hexSignature: string;
   bio: string;
-  level: number;
-  xp: number;
-  era: string;
-  autoLevel: boolean;
   hoursSpent: number;
   favoriteCharIds: string[];
 }
@@ -380,49 +696,15 @@ const DEFAULT_CUSTOM: ProfileCustomization = {
   username: 'haradaakira',
   avatarUrl: '/images/Camellya_Card.webp',
   bannerUrl: BANNER_PRESETS[0].url,
-  frameId: 'power',
-  titleId: 'star-law',
-  secondaryBadge: 'SOLARIS PASS',
-  status: 'online',
-  registeredAt: '26 августа 2026 г.',
-  hexSignature: 'CAFE BABE 13E4 3AF4 6D2D 3881 6161 73C6',
+  frameId: 'solaris-astrolabe',
+  titleId: 'sun-bringer',
   bio: `[ Apostle of the Epilogue and Eternity ] tg: haradaakiratt
 [ Demon King of Salvation ] tt: teamconstellations
 [ The Oldest Dream ] ds: haradaakira
 [ Founder of Team Constellations ] twitch: haradaakira
 [ King of a Kingless World ] youtube: @team.constellations`,
-  level: 3110,
-  xp: 186428,
-  era: 'Магма',
-  autoLevel: false,
   hoursSpent: 367,
   favoriteCharIds: ['camellya', 'changli', 'shorekeeper', 'jinhsi'],
-};
-
-const STATUS_META: Record<
-  OnlineStatusType,
-  { label: string; dotClass: string; textClass: string }
-> = {
-  online: {
-    label: 'В сети',
-    dotClass: 'bg-purple-400 shadow-[0_0_10px_#c084fc]',
-    textClass: 'text-purple-300',
-  },
-  ingame: {
-    label: 'В Соларис-3',
-    dotClass: 'bg-emerald-400 shadow-[0_0_10px_#34d399]',
-    textClass: 'text-emerald-300',
-  },
-  dnd: {
-    label: 'Не беспокоить',
-    dotClass: 'bg-rose-500 shadow-[0_0_10px_#f43f5e]',
-    textClass: 'text-rose-300',
-  },
-  offline: {
-    label: 'Не в сети',
-    dotClass: 'bg-gray-500',
-    textClass: 'text-gray-400',
-  },
 };
 
 function compressImageFile(file: File, maxW: number, maxH: number): Promise<string> {
@@ -476,72 +758,12 @@ const FramedAvatar = ({
         <div
           aria-hidden="true"
           style={{ background: frame.glowStyle }}
-          className="absolute -inset-2 rounded-full blur-md opacity-75 pointer-events-none"
+          className="absolute -inset-2.5 rounded-full blur-md opacity-80 pointer-events-none"
         />
       )}
 
-      {frame.badge === 'power' && (
-        <>
-          <svg
-            viewBox="0 0 120 120"
-            className="absolute -inset-3 w-[calc(100%+24px)] h-[calc(100%+24px)] pointer-events-none z-20 drop-shadow-[0_0_8px_rgba(244,63,94,0.9)]"
-          >
-            <path d="M28 24 C22 6, 36 4, 42 18 Z" fill="#e11d48" stroke="#fecdd3" strokeWidth="1.2" />
-            <path d="M92 24 C98 6, 84 4, 78 18 Z" fill="#e11d48" stroke="#fecdd3" strokeWidth="1.2" />
-            <path
-              d="M96 34 C118 55, 114 92, 86 108 C102 88, 104 60, 88 42 Z"
-              fill="#fb7185"
-              opacity="0.9"
-            />
-          </svg>
-          <span className="absolute -left-2 top-1/2 -translate-y-1/2 -rotate-12 z-20 px-1.5 py-0.5 rounded bg-rose-600 text-[9px] font-black tracking-tighter text-white shadow-[0_0_10px_#e11d48] border border-rose-300 pointer-events-none">
-            POWER!
-          </span>
-          <span
-            aria-hidden="true"
-            className="absolute -bottom-1 -left-1 z-20 text-base drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)] pointer-events-none"
-          >
-            🐱
-          </span>
-        </>
-      )}
-
-      {frame.badge === 'king' && (
-        <span
-          aria-hidden="true"
-          className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-20 text-xl drop-shadow-[0_0_12px_rgba(251,191,36,0.95)] pointer-events-none"
-        >
-          👑
-        </span>
-      )}
-
-      {frame.badge === 'telecat' && (
-        <>
-          <svg
-            viewBox="0 0 120 120"
-            className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20 drop-shadow-[0_0_8px_rgba(56,189,248,0.85)]"
-          >
-            <polygon points="18,32 14,6 38,18" fill="#38bdf8" stroke="#e0f2fe" strokeWidth="2" />
-            <polygon points="102,32 106,6 82,18" fill="#38bdf8" stroke="#e0f2fe" strokeWidth="2" />
-          </svg>
-          <span className="absolute top-1.5 left-1/2 -translate-x-1/2 z-20 text-xs drop-shadow pointer-events-none">
-            🌙
-          </span>
-        </>
-      )}
-
-      {frame.badge === 'sakura' && (
-        <>
-          <span className="absolute -top-1 -right-1 z-20 text-sm pointer-events-none">🌸</span>
-          <span className="absolute -bottom-1 -left-1 z-20 text-sm pointer-events-none">🌸</span>
-        </>
-      )}
-
-      {frame.badge === 'band' && (
-        <div className="absolute top-2 inset-x-2 z-20 py-0.5 rounded bg-gradient-to-r from-slate-700 via-slate-200 to-slate-700 text-[#09090b] text-[8px] font-black text-center tracking-widest uppercase shadow pointer-events-none">
-          Stellar
-        </div>
-      )}
+      {/* Векторный SVG-орнамент поверх аватара */}
+      <FrameOrnamentSVG frameId={frame.id} />
 
       <div
         className={`relative w-full h-full rounded-full overflow-hidden bg-[#12131c] flex items-center justify-center z-10 ${frame.ringClass}`}
@@ -611,19 +833,20 @@ const TitleBadge = ({
 export const ProfilePage = () => {
   useDocumentMeta({
     title: 'Профиль — Stellar Wiki',
-    description: 'Персональный профиль Ровера: кастомизация, титулы Wuthering Waves, уровень и ростер.',
+    description: 'Персональный профиль Ровера: кастомизация, титулы Wuthering Waves, уровень и достижения.',
   });
 
   const { user, token } = useAuth();
   const [profile, setProfile] = useLocalStorage<PlayerProfile>('ww_profile', DEFAULT_PROFILE);
   const [custom, setCustom] = useLocalStorage<ProfileCustomization>(
-    'ww_profile_custom_v1',
+    'ww_profile_custom_v2',
     DEFAULT_CUSTOM,
   );
   const [collected] = useLocalStorage<string[]>('ww_map_collected', []);
 
+  // Вкладки правой панели
   const [activeSection, setActiveSection] = useState<
-    'main' | 'roster' | 'showcase' | 'favorites' | 'achievements'
+    'main' | 'showcase' | 'favorites' | 'achievements'
   >('main');
 
   const [viewAsVisitor, setViewAsVisitor] = useState(false);
@@ -633,12 +856,51 @@ export const ProfilePage = () => {
   >(null);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
-  const [syncingServer, setSyncingServer] = useState(false);
 
-  const [pickId, setPickId] = useState('');
-  const [pickLevel, setPickLevel] = useState(90);
-  const [pickWeapon, setPickWeapon] = useState('');
-  const [pickEcho, setPickEcho] = useState('');
+  // Реальный статус «В сети» / «Не в сети» (отслеживается автоматически, без ручного редактирования)
+  const [isBrowserOnline, setIsBrowserOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true,
+  );
+
+  useEffect(() => {
+    const onOnline = () => setIsBrowserOnline(true);
+    const onOffline = () => setIsBrowserOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  // Фактическая дата регистрации аккаунта (нередактируемая)
+  const factualRegistrationDate = useMemo(() => {
+    const anyUser = user as unknown as Record<string, unknown> | null;
+    const serverDate = anyUser?.createdAt || anyUser?.created_at;
+    if (typeof serverDate === 'string' && serverDate) {
+      const parsed = new Date(serverDate);
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toLocaleDateString('ru-RU', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        });
+      }
+    }
+    const storageKey = `ww_factual_reg_date_${user?.id ?? 'local'}`;
+    let savedIso = localStorage.getItem(storageKey);
+    if (!savedIso) {
+      savedIso = new Date().toISOString();
+      localStorage.setItem(storageKey, savedIso);
+    }
+    const d = new Date(savedIso);
+    if (isNaN(d.getTime())) return '20 октября 2026 г.';
+    return d.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }, [user]);
 
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -679,43 +941,73 @@ export const ProfilePage = () => {
     () => PROFILE_TITLES.find((t) => t.id === custom.titleId) ?? PROFILE_TITLES[0],
     [custom.titleId],
   );
-  const statusInfo = STATUS_META[custom.status] ?? STATUS_META.online;
 
   const mapPercent = useMemo(
     () => Math.round((collected.length / Math.max(1, MAP_MARKERS.length)) * 100),
     [collected],
   );
 
+  // Достижения профиля
+  const achievements = useMemo(
+    () => [
+      {
+        id: 'a1',
+        title: 'Первый шаг в Соларис-3',
+        desc: 'Создать и кастомизировать личный профиль Ровера',
+        done: true,
+        reward: 'Титул «Закон звёзд»',
+      },
+      {
+        id: 'a2',
+        title: 'Тактический отряд',
+        desc: 'Собрать минимум 3 любимых резонатора на витрине',
+        done: custom.favoriteCharIds.length >= 3,
+        reward: 'Рамка «Золото Архонта»',
+      },
+      {
+        id: 'a3',
+        title: 'Коллекционер резонанса',
+        desc: 'Добавить персонажей в ростер или витрину',
+        done: profile.roster.length >= 5 || custom.favoriteCharIds.length >= 4,
+        reward: 'Титул «Собиратель редкостей»',
+      },
+      {
+        id: 'a4',
+        title: 'Первопроходец Хуанлуна',
+        desc: 'Отметить собранными минимум 5 точек на интерактивной карте',
+        done: collected.length >= 5,
+        reward: 'Титул «Доставщик солнца»',
+      },
+      {
+        id: 'a5',
+        title: 'Ветеран Соларис-3',
+        desc: 'Достичь 60+ Union Level в профиле',
+        done: profile.unionLevel >= 60,
+        reward: 'Рамка «Астролябия Соларис»',
+      },
+    ],
+    [profile.roster.length, custom.favoriteCharIds.length, collected.length, profile.unionLevel],
+  );
+
+  // Автоматический расчёт уровня и XP от реальных показателей (без ручной накрутки)
   const computedLevelData = useMemo(() => {
-    if (!custom.autoLevel) {
-      const xpInCurrentLevel = custom.xp % 100;
-      const pct = Math.max(5, Math.min(99, xpInCurrentLevel || 10));
-      const remaining = 100 - pct;
-      const shortLabel =
-        custom.level >= 1000
-          ? `${(custom.level / 1000).toFixed(1).replace('.0', '')}K`
-          : String(custom.level);
-      return {
-        level: custom.level,
-        shortLabel,
-        xpFormatted: custom.xp.toLocaleString('ru-RU'),
-        percent: pct,
-        remainingXp: remaining,
-        nextLevel: custom.level + 1,
-        era: custom.era || 'Магма',
-      };
-    }
+    const doneAchievements = achievements.filter((a) => a.done).length;
     const totalXp =
-      profile.roster.length * 450 + collected.length * 120 + profile.unionLevel * 85 + 1200;
-    const lvl = Math.max(1, Math.floor(totalXp / 250));
-    const rem = totalXp % 250;
-    const pct = Math.round((rem / 250) * 100);
+      profile.unionLevel * 120 +
+      collected.length * 150 +
+      profile.roster.length * 350 +
+      custom.favoriteCharIds.length * 180 +
+      doneAchievements * 500 +
+      custom.hoursSpent * 25;
+    const lvl = Math.max(1, Math.floor(totalXp / 500));
+    const rem = totalXp % 500;
+    const pct = Math.max(4, Math.round((rem / 500) * 100));
     const era =
-      lvl >= 100
+      lvl >= 50
         ? 'Астрал Соларис-3'
-        : lvl >= 50
+        : lvl >= 25
         ? 'Магма'
-        : lvl >= 20
+        : lvl >= 10
         ? 'Резонанс'
         : 'Пробуждение';
     return {
@@ -723,18 +1015,18 @@ export const ProfilePage = () => {
       shortLabel: lvl >= 1000 ? `${(lvl / 1000).toFixed(1)}K` : String(lvl),
       xpFormatted: totalXp.toLocaleString('ru-RU'),
       percent: pct,
-      remainingXp: 250 - rem,
+      remainingXp: 500 - rem,
       nextLevel: lvl + 1,
       era,
     };
-  }, [custom, profile.roster.length, profile.unionLevel, collected.length]);
-
-  const cycleStatus = () => {
-    if (viewAsVisitor) return;
-    const order: OnlineStatusType[] = ['online', 'ingame', 'dnd', 'offline'];
-    const next = order[(order.indexOf(custom.status) + 1) % order.length];
-    setCustom({ ...custom, status: next });
-  };
+  }, [
+    achievements,
+    profile.unionLevel,
+    collected.length,
+    profile.roster.length,
+    custom.favoriteCharIds.length,
+    custom.hoursSpent,
+  ]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -758,13 +1050,12 @@ export const ProfilePage = () => {
     }
   };
 
-  const syncRosterToServer = async (nextRoster: PlayerProfile['roster'], nextUid?: string) => {
+  const syncUidToServer = async (nextUid: string) => {
     if (!API_ENABLED || !token) return;
-    setSyncingServer(true);
     try {
       await apiSaveProfile(token, {
-        uid: nextUid ?? profile.uid,
-        roster: nextRoster.map((r) => ({
+        uid: nextUid,
+        roster: profile.roster.map((r) => ({
           characterId: r.characterId,
           level: r.level,
           weapon: r.weapon,
@@ -774,34 +1065,7 @@ export const ProfilePage = () => {
       });
     } catch {
       // локальная копия уже сохранена
-    } finally {
-      setSyncingServer(false);
     }
-  };
-
-  const addToRoster = () => {
-    if (!pickId) return;
-    if (profile.roster.some((r) => r.characterId === pickId)) return;
-    const nextRoster = [
-      ...profile.roster,
-      {
-        characterId: pickId,
-        level: pickLevel,
-        weapon: pickWeapon.trim() || 'Сигнатурное',
-        echoSet: pickEcho.trim() || '4-3-3-1-1',
-      },
-    ];
-    setProfile({ ...profile, roster: nextRoster });
-    syncRosterToServer(nextRoster);
-    setPickId('');
-    setPickWeapon('');
-    setPickEcho('');
-  };
-
-  const removeFromRoster = (charId: string) => {
-    const nextRoster = profile.roster.filter((r) => r.characterId !== charId);
-    setProfile({ ...profile, roster: nextRoster });
-    syncRosterToServer(nextRoster);
   };
 
   const toggleFavoriteChar = (charId: string) => {
@@ -818,52 +1082,6 @@ export const ProfilePage = () => {
     setTimeout(() => setCopiedShare(false), 2000);
   };
 
-  const availableForRoster = useMemo(
-    () => CHARACTERS.filter((c) => !profile.roster.some((r) => r.characterId === c.id)),
-    [profile.roster],
-  );
-
-  const achievements = useMemo(
-    () => [
-      {
-        id: 'a1',
-        title: 'Первый шаг в Соларис-3',
-        desc: 'Создать и кастомизировать личный профиль Ровера',
-        done: true,
-        reward: 'Титул «Закон звёзд»',
-      },
-      {
-        id: 'a2',
-        title: 'Тактический отряд',
-        desc: 'Добавить минимум 3 резонаторов в личный ростер',
-        done: profile.roster.length >= 3,
-        reward: 'Рамка «Золотая»',
-      },
-      {
-        id: 'a3',
-        title: 'Коллекционер резонанса',
-        desc: 'Собрать 10 или более персонажей в ростере',
-        done: profile.roster.length >= 10,
-        reward: 'Титул «Собиратель редкостей»',
-      },
-      {
-        id: 'a4',
-        title: 'Первопроходец Хуанлуна',
-        desc: 'Отметить собранными минимум 5 точек на интерактивной карте',
-        done: collected.length >= 5,
-        reward: 'Титул «Доставщик солнца»',
-      },
-      {
-        id: 'a5',
-        title: 'Хранитель Эпохи',
-        desc: 'Достичь 100+ уровня профиля',
-        done: computedLevelData.level >= 100,
-        reward: 'Рамка «■THE_KING_IS_AWAKE■»',
-      },
-    ],
-    [profile.roster.length, collected.length, computedLevelData.level],
-  );
-
   const bioLines = useMemo(
     () =>
       custom.bio
@@ -874,7 +1092,14 @@ export const ProfilePage = () => {
   );
 
   return (
-    <div className="space-y-6 pb-10">
+    <div className="space-y-6 pb-10 w-full">
+      {/* Расширяем контейнер страницы профиля до 1540px, чтобы убрать лишнюю пустоту по бокам */}
+      <style>{`
+        main > div {
+          max-width: 1540px !important;
+        }
+      `}</style>
+
       <input
         ref={avatarFileInputRef}
         type="file"
@@ -890,9 +1115,9 @@ export const ProfilePage = () => {
         className="hidden"
       />
 
-      {/* ==================== ВЕРХНИЙ БЛОК: БАННЕР + ПРОФИЛЬ ==================== */}
+      {/* ==================== ВЕРХНИЙ БЛОК: ШАПКА + ПРОФИЛЬ ==================== */}
       <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-[#0b0c12] shadow-[0_25px_70px_rgba(0,0,0,0.8)]">
-        <div className="relative h-60 sm:h-72 md:h-80 w-full overflow-hidden">
+        <div className="relative h-64 sm:h-72 md:h-80 w-full overflow-hidden">
           <img
             src={custom.bannerUrl || BANNER_PRESETS[0].url}
             alt="Шапка профиля"
@@ -901,7 +1126,7 @@ export const ProfilePage = () => {
           />
           <div
             aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-t from-[#0b0c12] via-[#0b0c12]/65 to-black/20"
+            className="absolute inset-0 bg-gradient-to-t from-[#0b0c12] via-[#0b0c12]/60 to-black/20"
           />
           <div
             aria-hidden="true"
@@ -935,8 +1160,9 @@ export const ProfilePage = () => {
           )}
         </div>
 
-        <div className="relative z-10 -mt-28 sm:-mt-32 px-5 sm:px-8 pb-6">
-          <div className="flex flex-col md:flex-row gap-6 items-start">
+        <div className="relative z-10 -mt-28 sm:-mt-32 px-6 sm:px-10 pb-7">
+          <div className="flex flex-col md:flex-row gap-7 items-start">
+            {/* Аватар с новой векторной рамкой */}
             <div className="relative group mx-auto md:mx-0">
               <FramedAvatar
                 src={custom.avatarUrl}
@@ -957,6 +1183,7 @@ export const ProfilePage = () => {
               )}
             </div>
 
+            {/* Основная информация */}
             <div className="flex-1 min-w-0 w-full text-center md:text-left">
               <div className="flex flex-col md:flex-row md:items-baseline gap-1 md:gap-3">
                 <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow">
@@ -967,22 +1194,18 @@ export const ProfilePage = () => {
                 </span>
               </div>
 
-              <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mt-3">
+              {/* Ряд бейджей: Титул WuWa + Коллекция + UID (без SOLARIS PASS) */}
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-2.5 mt-3">
                 <button
                   type="button"
                   onClick={() => !viewAsVisitor && setAppearanceModal('titles')}
-                  className={viewAsVisitor ? 'cursor-default' : 'hover:scale-[1.03] transition-transform'}
+                  className={
+                    viewAsVisitor ? 'cursor-default' : 'hover:scale-[1.03] transition-transform'
+                  }
                   title={viewAsVisitor ? currentTitle.name : 'Нажми, чтобы сменить титул'}
                 >
                   <TitleBadge title={currentTitle} />
                 </button>
-
-                {custom.secondaryBadge && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950/60 border border-purple-400/40 text-purple-200 text-xs font-bold shadow-[0_0_14px_rgba(168,85,247,0.25)]">
-                    <Crown size={12} className="text-purple-300" />
-                    <span>{custom.secondaryBadge}</span>
-                  </span>
-                )}
 
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.06] border border-white/10 text-xs font-semibold text-gray-200">
                   <Sparkles size={12} className="text-accent-light" />
@@ -996,39 +1219,34 @@ export const ProfilePage = () => {
                 </span>
               </div>
 
+              {/* Фактический статус онлайна + фактическая дата регистрации */}
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-3 gap-y-1 mt-3 text-xs">
-                <button
-                  type="button"
-                  onClick={cycleStatus}
-                  title={
-                    viewAsVisitor
-                      ? statusInfo.label
-                      : 'Нажми, чтобы переключить статус (В сети / В Соларис-3 / Не беспокоить / Не в сети)'
-                  }
-                  className={`inline-flex items-center gap-2 font-semibold ${statusInfo.textClass} ${
-                    viewAsVisitor ? 'cursor-default' : 'hover:opacity-85 cursor-pointer'
+                <span
+                  className={`inline-flex items-center gap-2 font-semibold ${
+                    isBrowserOnline ? 'text-purple-300' : 'text-gray-400'
                   }`}
                 >
-                  <span className={`w-2 h-2 rounded-full ${statusInfo.dotClass}`} />
-                  <span>{statusInfo.label}</span>
-                </button>
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      isBrowserOnline
+                        ? 'bg-purple-400 shadow-[0_0_10px_#c084fc]'
+                        : 'bg-gray-500'
+                    }`}
+                  />
+                  <span>{isBrowserOnline ? 'В сети' : 'Не в сети'}</span>
+                </span>
 
                 <span className="text-gray-600">•</span>
 
                 <span className="inline-flex items-center gap-1.5 text-gray-400">
                   <Calendar size={12} className="text-gray-500" />
-                  <span>На сайте с {custom.registeredAt}</span>
+                  <span>На сайте с {factualRegistrationDate}</span>
                 </span>
               </div>
 
-              {custom.hexSignature && (
-                <p className="mt-2 font-mono text-[11px] tracking-[0.22em] text-gray-500/80 uppercase truncate">
-                  {custom.hexSignature}
-                </p>
-              )}
-
+              {/* Описание профиля (без декоративного HEX-кода) */}
               {bioLines.length > 0 && (
-                <div className="mt-3.5 space-y-1 text-xs sm:text-[13px] text-gray-200/95 font-medium leading-relaxed max-w-2xl">
+                <div className="mt-4 space-y-1 text-xs sm:text-[13px] text-gray-200/95 font-medium leading-relaxed max-w-3xl">
                   {bioLines.map((line, idx) => (
                     <p key={idx} className="truncate sm:whitespace-normal">
                       {line}
@@ -1039,6 +1257,7 @@ export const ProfilePage = () => {
             </div>
           </div>
 
+          {/* Кнопки действий */}
           {!viewAsVisitor && (
             <div className="flex flex-wrap items-center justify-center md:justify-end gap-2.5 mt-6 pt-4 border-t border-white/[0.07]">
               <button
@@ -1091,23 +1310,9 @@ export const ProfilePage = () => {
       </div>
 
       {/* ==================== НИЖНЯЯ СЕТКА: КОНТЕНТ СЛЕВА + МЕНЮ СПРАВА ==================== */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr,260px] gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr,270px] gap-6 items-start">
         <div className="space-y-5 min-w-0">
-          <div className="rounded-2xl p-4 sm:px-6 bg-gradient-to-r from-[#1c1635]/90 via-[#151324]/90 to-[#12121a]/90 border border-purple-500/25 flex items-center justify-between gap-4 shadow-lg">
-            <div>
-              <p className="text-sm font-extrabold text-purple-300 tracking-wide">
-                {custom.secondaryBadge || 'Stellar Pass'}
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Полная кастомизация профиля, рамок и титулов Соларис-3 открыта
-              </p>
-            </div>
-            <span className="px-3 py-1 rounded-full bg-white/10 border border-white/15 text-[11px] font-extrabold uppercase tracking-wider text-ivory shrink-0">
-              АКТИВЕН
-            </span>
-          </div>
-
-          {/* КАРТОЧКА УРОВНЯ ПРОФИЛЯ */}
+          {/* КАРТОЧКА УРОВНЯ ПРОФИЛЯ (автоматический расчёт) */}
           <div className="relative overflow-hidden rounded-2xl p-5 sm:p-6 bg-gradient-to-r from-[#261214]/90 via-[#141218]/95 to-[#121216]/95 border border-rose-500/25 shadow-[0_15px_45px_rgba(0,0,0,0.65)]">
             <div
               aria-hidden="true"
@@ -1158,9 +1363,9 @@ export const ProfilePage = () => {
           </div>
 
           {/* 4 ПЛИТКИ СТАТИСТИКИ */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-            <div className="glass-panel p-4 relative overflow-hidden">
-              <Clock size={15} className="absolute top-3.5 right-3.5 text-gray-500" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="glass-panel p-5 relative overflow-hidden">
+              <Clock size={16} className="absolute top-4 right-4 text-gray-500" />
               <p className="text-2xl sm:text-3xl font-black text-white tabular-nums">
                 {custom.hoursSpent} ч
               </p>
@@ -1169,18 +1374,18 @@ export const ProfilePage = () => {
               </p>
             </div>
 
-            <div className="glass-panel p-4 relative overflow-hidden">
-              <Users size={15} className="absolute top-3.5 right-3.5 text-gray-500" />
+            <div className="glass-panel p-5 relative overflow-hidden">
+              <Users size={16} className="absolute top-4 right-4 text-gray-500" />
               <p className="text-2xl sm:text-3xl font-black text-white tabular-nums">
-                {profile.roster.length}
+                {custom.favoriteCharIds.length}
               </p>
               <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mt-1">
-                В РОСТЕРЕ
+                ИЗБРАННЫХ
               </p>
             </div>
 
-            <div className="glass-panel p-4 relative overflow-hidden">
-              <Compass size={15} className="absolute top-3.5 right-3.5 text-gray-500" />
+            <div className="glass-panel p-5 relative overflow-hidden">
+              <Compass size={16} className="absolute top-4 right-4 text-gray-500" />
               <p className="text-2xl sm:text-3xl font-black text-white tabular-nums">
                 {mapPercent}%
               </p>
@@ -1189,8 +1394,8 @@ export const ProfilePage = () => {
               </p>
             </div>
 
-            <div className="glass-panel p-4 relative overflow-hidden">
-              <Trophy size={15} className="absolute top-3.5 right-3.5 text-gray-500" />
+            <div className="glass-panel p-5 relative overflow-hidden">
+              <Trophy size={16} className="absolute top-4 right-4 text-gray-500" />
               <p className="text-2xl sm:text-3xl font-black text-white tabular-nums">
                 {achievements.filter((a) => a.done).length}/{achievements.length}
               </p>
@@ -1200,265 +1405,138 @@ export const ProfilePage = () => {
             </div>
           </div>
 
+          {/* ДОПОЛНИТЕЛЬНЫЕ ВКЛАДКИ (Витрина / Любимое / Достижения) */}
           <AnimatePresence mode="wait">
-            <motion.div
-              key={activeSection}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              {(activeSection === 'main' || activeSection === 'roster') && (
-                <div className="glass-panel p-5 sm:p-6 space-y-5">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
+            {activeSection !== 'main' && (
+              <motion.div
+                key={activeSection}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+              >
+                {(activeSection === 'showcase' || activeSection === 'favorites') && (
+                  <div className="glass-panel p-5 sm:p-6 space-y-5">
                     <div>
-                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        <span>Мой ростер резонаторов ({profile.roster.length})</span>
-                        {syncingServer && (
-                          <RefreshCw size={14} className="animate-spin text-accent-light" />
-                        )}
+                      <h2 className="text-xl font-bold text-white">
+                        Любимые резонаторы ({custom.favoriteCharIds.length})
                       </h2>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        Персонажи в твоей коллекции, их уровень, оружие и эхо-сеты
+                        Отметь сердечком любимых персонажей для своей витрины
                       </p>
                     </div>
-                  </div>
 
-                  {profile.roster.length === 0 ? (
-                    <div className="p-8 rounded-2xl bg-black/30 border border-white/[0.06] text-center">
-                      <p className="text-sm text-gray-400">
-                        В ростере пока пусто. Добавь своих персонажей через форму ниже!
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {profile.roster.map((r) => {
-                        const char = getCharacterById(r.characterId);
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                      {custom.favoriteCharIds.map((cid) => {
+                        const char = getCharacterById(cid);
                         if (!char) return null;
-                        const el = ELEMENTS[char.element];
                         return (
                           <div
-                            key={r.characterId}
-                            className="p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 flex items-center gap-3.5 transition-colors"
+                            key={cid}
+                            className="group relative rounded-2xl overflow-hidden border border-white/15 bg-[#0b0d14] aspect-[3/4]"
                           >
-                            <Link to={`/characters/${char.id}`} className="shrink-0">
+                            <Link to={`/characters/${char.id}`} className="block w-full h-full">
                               <ImagePlaceholder
                                 id={char.id}
                                 initials={char.name.slice(0, 2)}
                                 element={char.element}
-                                className="w-14 h-16 rounded-xl border border-white/15 object-top"
+                                className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
                               />
-                            </Link>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <Link
-                                  to={`/characters/${char.id}`}
-                                  className="font-bold text-sm text-white hover:text-accent-light truncate"
-                                >
-                                  {char.name}
-                                </Link>
-                                <span className="px-1.5 py-0.5 rounded bg-accent/20 text-accent-light text-[10px] font-bold">
-                                  Ур. {r.level}
-                                </span>
+                              <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/90 via-black/50 to-transparent">
+                                <p className="font-bold text-sm text-white truncate">{char.name}</p>
+                                <p className="text-[11px] text-accent-light truncate">
+                                  {char.title}
+                                </p>
                               </div>
-                              <p className={`text-[11px] ${el.color} mt-0.5`}>
-                                {el.label} · {WEAPON_LABELS[char.weapon]}
-                              </p>
-                              <p className="text-xs text-gray-400 truncate mt-1">
-                                🗡 {r.weapon} · 🎒 {r.echoSet}
-                              </p>
-                            </div>
+                            </Link>
                             {!viewAsVisitor && (
                               <button
                                 type="button"
-                                onClick={() => removeFromRoster(r.characterId)}
-                                className="p-2 rounded-xl text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                                aria-label={`Удалить ${char.name}`}
+                                onClick={() => toggleFavoriteChar(char.id)}
+                                className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-rose-400 hover:bg-black/80"
+                                title="Убрать из любимого"
                               >
-                                <Trash2 size={16} />
+                                <Heart size={14} fill="currentColor" />
                               </button>
                             )}
                           </div>
                         );
                       })}
                     </div>
-                  )}
 
-                  {!viewAsVisitor && (
-                    <div className="pt-4 border-t border-white/10">
-                      <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-2">
-                        <UserPlus size={14} className="text-accent-light" />
-                        <span>Добавить резонатора в ростер</span>
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
-                        <select
-                          value={pickId}
-                          onChange={(e) => setPickId(e.target.value)}
-                          className="bg-[#0b0d14] border border-white/15 rounded-xl px-3 py-2.5 text-sm text-ivory focus-ring"
-                        >
-                          <option value="">— Персонаж —</option>
-                          {availableForRoster.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name} ({c.rarity}★)
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          min={1}
-                          max={90}
-                          value={pickLevel}
-                          onChange={(e) => setPickLevel(Number(e.target.value))}
-                          placeholder="Уровень"
-                          className="bg-[#0b0d14] border border-white/15 rounded-xl px-3 py-2.5 text-sm text-ivory focus-ring"
-                        />
-                        <input
-                          type="text"
-                          value={pickWeapon}
-                          onChange={(e) => setPickWeapon(e.target.value)}
-                          placeholder="Оружие"
-                          className="bg-[#0b0d14] border border-white/15 rounded-xl px-3 py-2.5 text-sm text-ivory focus-ring"
-                        />
-                        <input
-                          type="text"
-                          value={pickEcho}
-                          onChange={(e) => setPickEcho(e.target.value)}
-                          placeholder="Эхо-набор"
-                          className="bg-[#0b0d14] border border-white/15 rounded-xl px-3 py-2.5 text-sm text-ivory focus-ring"
-                        />
-                        <button
-                          type="button"
-                          onClick={addToRoster}
-                          disabled={!pickId}
-                          className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] font-extrabold text-sm disabled:opacity-40 hover:brightness-105 transition-all"
-                        >
-                          Добавить
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {(activeSection === 'showcase' || activeSection === 'favorites') && (
-                <div className="glass-panel p-5 sm:p-6 space-y-5">
-                  <div>
-                    <h2 className="text-xl font-bold text-white">
-                      Любимые резонаторы на витрине ({custom.favoriteCharIds.length})
-                    </h2>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      Нажми на сердечко на карточке любого персонажа ниже, чтобы закрепить его на витрине профиля
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-                    {custom.favoriteCharIds.map((cid) => {
-                      const char = getCharacterById(cid);
-                      if (!char) return null;
-                      return (
-                        <div
-                          key={cid}
-                          className="group relative rounded-2xl overflow-hidden border border-white/15 bg-[#0b0d14] aspect-[3/4]"
-                        >
-                          <Link to={`/characters/${char.id}`} className="block w-full h-full">
-                            <ImagePlaceholder
-                              id={char.id}
-                              initials={char.name.slice(0, 2)}
-                              element={char.element}
-                              className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
-                            />
-                            <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/90 via-black/50 to-transparent">
-                              <p className="font-bold text-sm text-white truncate">{char.name}</p>
-                              <p className="text-[11px] text-accent-light truncate">{char.title}</p>
-                            </div>
-                          </Link>
-                          {!viewAsVisitor && (
-                            <button
-                              type="button"
-                              onClick={() => toggleFavoriteChar(char.id)}
-                              className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-rose-400 hover:bg-black/80"
-                              title="Убрать из любимого"
-                            >
-                              <Heart size={14} fill="currentColor" />
-                            </button>
-                          )}
+                    {!viewAsVisitor && (
+                      <div className="pt-4 border-t border-white/10">
+                        <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2.5">
+                          Быстрый выбор любимых персонажей:
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto p-1">
+                          {CHARACTERS.map((c) => {
+                            const fav = custom.favoriteCharIds.includes(c.id);
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => toggleFavoriteChar(c.id)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                                  fav
+                                    ? 'bg-rose-500/20 border-rose-400/50 text-rose-200'
+                                    : 'bg-white/[0.04] border-white/10 text-gray-400 hover:text-white'
+                                }`}
+                              >
+                                <Heart size={11} fill={fav ? 'currentColor' : 'none'} />
+                                <span>{c.name}</span>
+                              </button>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
+                      </div>
+                    )}
                   </div>
+                )}
 
-                  {!viewAsVisitor && (
-                    <div className="pt-4 border-t border-white/10">
-                      <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2.5">
-                        Быстрый выбор любимых персонажей:
+                {activeSection === 'achievements' && (
+                  <div className="glass-panel p-5 sm:p-6 space-y-4">
+                    <div>
+                      <h2 className="text-xl font-bold text-white">Достижения профиля</h2>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Выполняй активности на сайте, чтобы повышать уровень профиля
                       </p>
-                      <div className="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto p-1">
-                        {CHARACTERS.map((c) => {
-                          const fav = custom.favoriteCharIds.includes(c.id);
-                          return (
-                            <button
-                              key={c.id}
-                              type="button"
-                              onClick={() => toggleFavoriteChar(c.id)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 ${
-                                fav
-                                  ? 'bg-rose-500/20 border-rose-400/50 text-rose-200'
-                                  : 'bg-white/[0.04] border-white/10 text-gray-400 hover:text-white'
+                    </div>
+                    <div className="space-y-3">
+                      {achievements.map((a) => (
+                        <div
+                          key={a.id}
+                          className={`p-4 rounded-2xl border flex items-center justify-between gap-4 ${
+                            a.done
+                              ? 'bg-emerald-500/10 border-emerald-400/30'
+                              : 'bg-white/[0.03] border-white/10 opacity-70'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3.5">
+                            <div
+                              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                a.done
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                                  : 'bg-white/5 text-gray-500 border border-white/10'
                               }`}
                             >
-                              <Heart size={11} fill={fav ? 'currentColor' : 'none'} />
-                              <span>{c.name}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeSection === 'achievements' && (
-                <div className="glass-panel p-5 sm:p-6 space-y-4">
-                  <div>
-                    <h2 className="text-xl font-bold text-white">Достижения и награды профиля</h2>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      Прогресс выполнения активностей на сайте Stellar Wiki
-                    </p>
-                  </div>
-                  <div className="space-y-3">
-                    {achievements.map((a) => (
-                      <div
-                        key={a.id}
-                        className={`p-4 rounded-2xl border flex items-center justify-between gap-4 ${
-                          a.done
-                            ? 'bg-emerald-500/10 border-emerald-400/30'
-                            : 'bg-white/[0.03] border-white/10 opacity-70'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3.5">
-                          <div
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                              a.done
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
-                                : 'bg-white/5 text-gray-500 border border-white/10'
-                            }`}
-                          >
-                            <Award size={20} />
+                              <Award size={20} />
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-sm text-white">{a.title}</h3>
+                              <p className="text-xs text-gray-400 mt-0.5">{a.desc}</p>
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="font-bold text-sm text-white">{a.title}</h3>
-                            <p className="text-xs text-gray-400 mt-0.5">{a.desc}</p>
-                          </div>
+                          <span className="px-3 py-1 rounded-lg bg-black/40 border border-white/10 text-[11px] font-semibold text-accent-light shrink-0">
+                            {a.reward}
+                          </span>
                         </div>
-                        <span className="px-3 py-1 rounded-lg bg-black/40 border border-white/10 text-[11px] font-semibold text-accent-light shrink-0">
-                          {a.reward}
-                        </span>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </motion.div>
+                )}
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
 
@@ -1469,7 +1547,6 @@ export const ProfilePage = () => {
               { id: 'main', label: 'Основное', icon: LayoutGrid },
               { id: 'showcase', label: 'Витрина', icon: Sparkles },
               { id: 'favorites', label: 'Любимое', icon: Heart },
-              { id: 'roster', label: 'Мой ростер', icon: Layers },
               { id: 'achievements', label: 'Достижения', icon: Trophy },
             ] as const
           ).map((item) => {
@@ -1572,7 +1649,7 @@ export const ProfilePage = () => {
                           }`}
                         >
                           <div
-                            className={`h-40 bg-gradient-to-b ${frame.previewBg} flex items-center justify-center p-4 relative`}
+                            className={`h-44 bg-gradient-to-b ${frame.previewBg} flex items-center justify-center p-4 relative`}
                           >
                             <FramedAvatar
                               src={custom.avatarUrl}
@@ -1705,7 +1782,7 @@ export const ProfilePage = () => {
                             />
                           </button>
                         );
-                          })}
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1770,7 +1847,7 @@ export const ProfilePage = () => {
         )}
       </AnimatePresence>
 
-      {/* ==================== МОДАЛКА «НАСТРОЙКИ» ==================== */}
+      {/* ==================== МОДАЛКА «НАСТРОЙКИ» (без фейковых дат, статусов и уровней) ==================== */}
       <AnimatePresence>
         {settingsModalOpen && (
           <div
@@ -1828,7 +1905,7 @@ export const ProfilePage = () => {
                     value={profile.uid}
                     onChange={(e) => {
                       setProfile({ ...profile, uid: e.target.value });
-                      syncRosterToServer(profile.roster, e.target.value);
+                      syncUidToServer(e.target.value);
                     }}
                     className="w-full bg-[#090a0f] border border-white/15 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono"
                   />
@@ -1848,50 +1925,7 @@ export const ProfilePage = () => {
                   />
                 </label>
 
-                <label className="block">
-                  <span className="block text-xs font-bold text-gray-300 mb-1.5">
-                    Статус в профиле
-                  </span>
-                  <select
-                    value={custom.status}
-                    onChange={(e) =>
-                      setCustom({ ...custom, status: e.target.value as OnlineStatusType })
-                    }
-                    className="w-full bg-[#090a0f] border border-white/15 rounded-xl px-3.5 py-2.5 text-sm text-white"
-                  >
-                    <option value="online">● В сети</option>
-                    <option value="ingame">● В Соларис-3</option>
-                    <option value="dnd">● Не беспокоить</option>
-                    <option value="offline">○ Не в сети</option>
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="block text-xs font-bold text-gray-300 mb-1.5">
-                    Дата регистрации («На сайте с ...»)
-                  </span>
-                  <input
-                    type="text"
-                    value={custom.registeredAt}
-                    onChange={(e) => setCustom({ ...custom, registeredAt: e.target.value })}
-                    placeholder="26 августа 2026 г."
-                    className="w-full bg-[#090a0f] border border-white/15 rounded-xl px-3.5 py-2.5 text-sm text-white"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="block text-xs font-bold text-gray-300 mb-1.5">
-                    Доп. бейдж (например PREMIUM / SOLARIS PASS)
-                  </span>
-                  <input
-                    type="text"
-                    value={custom.secondaryBadge}
-                    onChange={(e) => setCustom({ ...custom, secondaryBadge: e.target.value })}
-                    className="w-full bg-[#090a0f] border border-white/15 rounded-xl px-3.5 py-2.5 text-sm text-white"
-                  />
-                </label>
-
-                <label className="block">
+                <label className="block sm:col-span-2">
                   <span className="block text-xs font-bold text-gray-300 mb-1.5">
                     Часов в Соларис-3
                   </span>
@@ -1906,66 +1940,6 @@ export const ProfilePage = () => {
                   />
                 </label>
               </div>
-
-              <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white">Параметры уровня и XP</span>
-                  <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={custom.autoLevel}
-                      onChange={(e) => setCustom({ ...custom, autoLevel: e.target.checked })}
-                    />
-                    <span>Считать автоматически от ростера и карты</span>
-                  </label>
-                </div>
-
-                {!custom.autoLevel && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <label className="block">
-                      <span className="block text-[11px] text-gray-400 mb-1">Уровень</span>
-                      <input
-                        type="number"
-                        value={custom.level}
-                        onChange={(e) =>
-                          setCustom({ ...custom, level: Number(e.target.value) })
-                        }
-                        className="w-full bg-[#090a0f] border border-white/15 rounded-xl px-3 py-2 text-xs text-white"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="block text-[11px] text-gray-400 mb-1">Опыт (XP)</span>
-                      <input
-                        type="number"
-                        value={custom.xp}
-                        onChange={(e) => setCustom({ ...custom, xp: Number(e.target.value) })}
-                        className="w-full bg-[#090a0f] border border-white/15 rounded-xl px-3 py-2 text-xs text-white"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="block text-[11px] text-gray-400 mb-1">Название Эры</span>
-                      <input
-                        type="text"
-                        value={custom.era}
-                        onChange={(e) => setCustom({ ...custom, era: e.target.value })}
-                        className="w-full bg-[#090a0f] border border-white/15 rounded-xl px-3 py-2 text-xs text-white"
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              <label className="block">
-                <span className="block text-xs font-bold text-gray-300 mb-1.5">
-                  Декоративный HEX-код под статусом
-                </span>
-                <input
-                  type="text"
-                  value={custom.hexSignature}
-                  onChange={(e) => setCustom({ ...custom, hexSignature: e.target.value })}
-                  className="w-full bg-[#090a0f] border border-white/15 rounded-xl px-3.5 py-2 text-xs font-mono text-gray-300"
-                />
-              </label>
 
               <label className="block">
                 <span className="block text-xs font-bold text-gray-300 mb-1.5">
