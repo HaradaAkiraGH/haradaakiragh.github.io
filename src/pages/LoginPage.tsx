@@ -1,5 +1,5 @@
 // Экран входа и регистрации Stellar Wiki:
-// Видеофон, мгновенный автозапуск музыки (15%), вертикальная громкость и дизайн в стиле терминала Соларис-3
+// Видеофон, автозапуск музыки (15%), вертикальный ползунок громкости и единый шрифт Manrope
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -30,7 +30,7 @@ const DEFAULT_VOLUME = 0.15;
 const VOL_STORAGE_KEY = 'ww_login_volume_v3';
 const MUTE_STORAGE_KEY = 'ww_login_muted_v3';
 
-// Парящие световые частицы
+// Декоративные парящие частицы
 const PARTICLES = [
   { id: 1, left: '12%', top: '75%', size: 3, duration: 7, delay: 0 },
   { id: 2, left: '24%', top: '82%', size: 4, duration: 9, delay: 1.2 },
@@ -107,7 +107,7 @@ export const LoginPage = () => {
     localStorage.setItem(MUTE_STORAGE_KEY, String(muted));
   }, [volume, muted]);
 
-  // Двухступенчатый автозапуск музыки (прямой старт + обход блокировки через muted-поток)
+  // Многоступенчатый автозапуск музыки (Web Audio API + muted-старт + перехват движения мыши)
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -115,7 +115,17 @@ export const LoginPage = () => {
     const targetVol = muted ? 0 : volume;
     audio.volume = targetVol;
 
-    const events = ['mouseover', 'pointermove', 'pointerenter', 'focus', 'keydown', 'wheel', 'pointerdown', 'touchstart'];
+    const events = [
+      'mouseover',
+      'mousemove',
+      'pointermove',
+      'pointerenter',
+      'focus',
+      'keydown',
+      'wheel',
+      'pointerdown',
+      'touchstart',
+    ];
 
     const removeUnlockListeners = () => {
       events.forEach((ev) => window.removeEventListener(ev, unlockAudio));
@@ -136,14 +146,20 @@ export const LoginPage = () => {
 
     const startImmediately = async () => {
       try {
-        // Попытка 1: прямой запуск со звуком
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+          }
+        }
         audio.muted = muted;
         audio.volume = targetVol;
         await audio.play();
         setPlaying(true);
         removeUnlockListeners();
       } catch {
-        // Попытка 2: старт в muted-режиме с мгновенным снятием mute
+        // Если браузер заблокировал прямой звук — запускаем поток без звука и снимаем mute при первом движении
         try {
           audio.muted = true;
           await audio.play();
@@ -152,9 +168,9 @@ export const LoginPage = () => {
             audioRef.current.muted = muted;
             audioRef.current.volume = targetVol;
             setPlaying(!audioRef.current.paused);
-          }, 80);
+          }, 60);
         } catch {
-          // Оставляем слушатели на малейшее движение мыши
+          // Слушатели событий подхватят при малейшем наведении курсора на окно
         }
       }
     };
@@ -233,16 +249,10 @@ export const LoginPage = () => {
   const VolumeIcon = effectiveVolume === 0 ? VolumeX : effectiveVolume < 0.5 ? Volume1 : Volume2;
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-[#07080c] flex items-center justify-center p-4 select-none font-sans">
-      {/* Подключаем чистый геометрический Manrope для идеальной кириллицы */}
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
-        .ww-clean-font {
-          font-family: 'Manrope', 'Inter', sans-serif;
-          letter-spacing: -0.01em;
-        }
-      `}</style>
-
+    <div
+      style={{ fontFamily: "'Manrope', 'Inter', sans-serif" }}
+      className="relative min-h-screen w-full overflow-hidden bg-[#07080c] flex items-center justify-center p-4 select-none"
+    >
       {/* Фоновое аудио */}
       <audio
         ref={audioRef}
@@ -267,7 +277,7 @@ export const LoginPage = () => {
         className="fixed inset-0 w-full h-full object-cover z-0 pointer-events-none"
       />
 
-      {/* Многослойное кинематографичное затемнение */}
+      {/* Многослойное затемнение и виньетка */}
       <div
         aria-hidden="true"
         className="fixed inset-0 z-[1] pointer-events-none bg-gradient-to-b from-[#07080c]/60 via-[#07080c]/20 to-[#07080c]/75"
@@ -305,14 +315,14 @@ export const LoginPage = () => {
         ))}
       </div>
 
-      {/* Верхняя полоса: только название сайта (шрифт не тронут) */}
+      {/* Верхняя полоса: только название сайта */}
       <motion.header
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: 'easeOut' }}
         className="fixed top-6 left-6 md:left-10 z-30 flex items-center"
       >
-        <span className="font-sans text-lg font-extrabold tracking-wider text-ivory/90 drop-shadow">
+        <span className="text-lg font-extrabold tracking-wider text-ivory/90 drop-shadow">
           STELLAR WIKI
         </span>
       </motion.header>
@@ -371,7 +381,7 @@ export const LoginPage = () => {
                 transition={{ duration: 0.18, ease: 'easeOut' }}
                 className="absolute top-full left-1/2 -translate-x-1/2 pt-2 z-50"
               >
-                <div className="w-9 py-3 rounded-2xl bg-[#0b0d14]/80 backdrop-blur-2xl border border-white/15 shadow-[0_12px_32px_rgba(0,0,0,0.7)] flex flex-col items-center gap-2">
+                <div className="w-9 py-3 rounded-2xl bg-[#0b0d14]/85 backdrop-blur-2xl border border-white/15 shadow-[0_12px_32px_rgba(0,0,0,0.75)] flex flex-col items-center gap-2">
                   <div className="relative w-6 h-24 flex items-center justify-center">
                     <div className="w-1.5 h-full rounded-full bg-white/15 overflow-hidden relative pointer-events-none">
                       <div
@@ -395,7 +405,7 @@ export const LoginPage = () => {
                     />
                   </div>
 
-                  <span className="ww-clean-font text-[10px] font-semibold text-ivory/80 tabular-nums">
+                  <span className="text-[10px] font-bold text-ivory/85 tabular-nums">
                     {Math.round(effectiveVolume * 100)}%
                   </span>
                 </div>
@@ -410,7 +420,7 @@ export const LoginPage = () => {
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        className="ww-clean-font relative z-20 w-full max-w-[420px] rounded-[28px] bg-[#0b0d14]/55 backdrop-blur-2xl border border-white/[0.12] shadow-[0_30px_90px_rgba(0,0,0,0.8),inset_0_1px_0_0_rgba(255,255,255,0.12)] p-7 sm:p-9 overflow-hidden"
+        className="relative z-20 w-full max-w-[420px] rounded-[28px] bg-[#0b0d14]/55 backdrop-blur-2xl border border-white/[0.12] shadow-[0_30px_90px_rgba(0,0,0,0.8),inset_0_1px_0_0_rgba(255,255,255,0.12)] p-7 sm:p-9 overflow-hidden"
       >
         {/* Золотистая световая линия на верхней грани */}
         <div
@@ -445,7 +455,7 @@ export const LoginPage = () => {
                   setMode(tab);
                   setError(null);
                 }}
-                className={`relative z-10 py-2.5 text-[13px] font-bold rounded-xl transition-colors focus-ring ${
+                className={`relative z-10 py-2.5 text-[13px] font-bold tracking-tight rounded-xl transition-colors focus-ring ${
                   active ? 'text-[#0b0d14]' : 'text-gray-400 hover:text-ivory'
                 }`}
               >
@@ -462,7 +472,7 @@ export const LoginPage = () => {
           })}
         </motion.div>
 
-        {/* Заголовок карточки */}
+        {/* Заголовок карточки (тем же шрифтом и жирностью, что и STELLAR WIKI) */}
         <motion.div variants={itemVariants} className="text-center mb-7">
           <AnimatePresence mode="wait">
             <motion.h1
@@ -527,8 +537,8 @@ export const LoginPage = () => {
                 className="overflow-hidden"
               >
                 <label className="block pb-1">
-                  <span className="block text-xs font-semibold text-gray-300 mb-1.5 ml-0.5">
-                    Никнейм <span className="text-gray-500 font-normal">(2–24 символа)</span>
+                  <span className="block text-xs font-bold text-ivory/90 mb-1.5 ml-0.5">
+                    Никнейм <span className="text-gray-500 font-medium">(2–24 символа)</span>
                   </span>
                   <div className="relative flex items-center group">
                     <User size={16} className="absolute left-3.5 text-gray-400 group-focus-within:text-[#caa07d] transition-colors pointer-events-none" />
@@ -540,7 +550,7 @@ export const LoginPage = () => {
                       value={nickname}
                       onChange={(e) => setNickname(e.target.value)}
                       placeholder="Rover"
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/35 border border-white/[0.1] text-sm font-medium text-ivory placeholder-gray-500 focus:outline-none focus:border-[#caa07d]/60 focus:bg-black/50 focus:shadow-[0_0_20px_rgba(202,160,125,0.12)] transition-all"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/35 border border-white/[0.1] text-sm font-medium text-ivory placeholder-gray-500 focus:outline-none focus:border-[#caa07d]/60 focus:bg-black/50 transition-all"
                     />
                   </div>
                 </label>
@@ -549,7 +559,7 @@ export const LoginPage = () => {
           </AnimatePresence>
 
           <motion.label variants={itemVariants} className="block">
-            <span className="block text-xs font-semibold text-gray-300 mb-1.5 ml-0.5">
+            <span className="block text-xs font-bold text-ivory/90 mb-1.5 ml-0.5">
               Электронная почта
             </span>
             <div className="relative flex items-center group">
@@ -560,14 +570,14 @@ export const LoginPage = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="rover@solaris.gg"
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/35 border border-white/[0.1] text-sm font-medium text-ivory placeholder-gray-500 focus:outline-none focus:border-[#caa07d]/60 focus:bg-black/50 focus:shadow-[0_0_20px_rgba(202,160,125,0.12)] transition-all"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/35 border border-white/[0.1] text-sm font-medium text-ivory placeholder-gray-500 focus:outline-none focus:border-[#caa07d]/60 focus:bg-black/50 transition-all"
               />
             </div>
           </motion.label>
 
           <motion.label variants={itemVariants} className="block">
-            <span className="block text-xs font-semibold text-gray-300 mb-1.5 ml-0.5">
-              Пароль {mode === 'register' && <span className="text-gray-500 font-normal">(мин. 8 символов)</span>}
+            <span className="block text-xs font-bold text-ivory/90 mb-1.5 ml-0.5">
+              Пароль {mode === 'register' && <span className="text-gray-500 font-medium">(мин. 8 символов)</span>}
             </span>
             <div className="relative flex items-center group">
               <Lock size={16} className="absolute left-3.5 text-gray-400 group-focus-within:text-[#caa07d] transition-colors pointer-events-none" />
@@ -577,7 +587,7 @@ export const LoginPage = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-black/35 border border-white/[0.1] text-sm font-medium text-ivory placeholder-gray-500 focus:outline-none focus:border-[#caa07d]/60 focus:bg-black/50 focus:shadow-[0_0_20px_rgba(202,160,125,0.12)] transition-all"
+                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-black/35 border border-white/[0.1] text-sm font-medium text-ivory placeholder-gray-500 focus:outline-none focus:border-[#caa07d]/60 focus:bg-black/50 transition-all"
               />
               <button
                 type="button"
@@ -616,7 +626,7 @@ export const LoginPage = () => {
               whileTap={{ scale: 0.985 }}
               type="submit"
               disabled={busy}
-              className="group relative w-full py-3 rounded-xl bg-gradient-to-r from-[#caa07d] via-[#e5c5a8] to-[#f7ece6] text-[#0b0d14] font-bold text-sm shadow-lg overflow-hidden transition-all disabled:opacity-50 focus-ring flex items-center justify-center gap-2"
+              className="group relative w-full py-3 rounded-xl bg-gradient-to-r from-[#caa07d] via-[#e5c5a8] to-[#f7ece6] text-[#0b0d14] font-extrabold text-sm tracking-tight shadow-lg overflow-hidden transition-all disabled:opacity-50 focus-ring flex items-center justify-center gap-2"
             >
               <span
                 aria-hidden="true"
