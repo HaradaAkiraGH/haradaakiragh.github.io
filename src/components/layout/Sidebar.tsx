@@ -1,6 +1,4 @@
-// Плавающий стеклянный сайдбар Stellar Wiki:
-// Группировка разделов, живые бейджи прогресса, мини-плеер Соларис-3 с таймером сброса
-// и карточка профиля с синхронизацией аватара, шапки и титула
+// Плавающий сайдбар Stellar Wiki без белой обводки, с мягкой глубокой тенью и синхронным сворачиванием
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -56,7 +54,6 @@ const DEFAULT_PROFILE: PlayerProfile = {
   roster: [],
 };
 
-// Группы разделов для аккуратной структуры меню
 const GROUP_MAP: Record<string, 'db' | 'tools' | 'system'> = {
   home: 'db',
   characters: 'db',
@@ -72,7 +69,6 @@ const GROUP_MAP: Record<string, 'db' | 'tools' | 'system'> = {
 
 const SPRING = { type: 'spring' as const, bounce: 0.2, duration: 0.5 };
 
-/* Таймер до ежедневного сброса сервера (04:00) */
 function getShortResetTimer(): string {
   const now = new Date();
   const target = new Date(now);
@@ -87,6 +83,7 @@ function getShortResetTimer(): string {
 interface Props {
   onOpenSearch: () => void;
   collapsed: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
@@ -96,7 +93,6 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
   const [profile] = useLocalStorage<PlayerProfile>('ww_profile', DEFAULT_PROFILE);
   const [collected] = useLocalStorage<string[]>('ww_map_collected', []);
 
-  // Читаем кастомизацию профиля (аватарку и шапку), чтобы сайдбар обновлялся синхронно со страницей /profile
   const [customData, setCustomData] = useState<{
     avatarUrl?: string;
     bannerUrl?: string;
@@ -114,21 +110,18 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
     }
   }, [location.pathname]);
 
-  // Живые метрики для бейджей меню
   const luckSummary = useMemo(() => getCachedLuckSummary(), [location.pathname]);
   const mapPercent = useMemo(
     () => Math.round((collected.length / Math.max(1, MAP_MARKERS.length)) * 100),
     [collected],
   );
 
-  // Таймер сброса серверов
   const [resetTime, setResetTime] = useState(() => getShortResetTimer());
   useEffect(() => {
     const id = setInterval(() => setResetTime(getShortResetTimer()), 30000);
     return () => clearInterval(id);
   }, []);
 
-  // Встроенный фоновый мини-плеер Соларис-3
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -161,7 +154,6 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
     navigate('/login');
   };
 
-  // Формируем список навигации (гарантируем наличие Бестиария, даже если его нет в константе)
   const fullNavItems = useMemo(() => {
     const hasBestiary = NAV_ITEMS.some((i) => i.path === '/bestiary' || i.id === 'bestiary');
     if (hasBestiary) return NAV_ITEMS;
@@ -187,7 +179,7 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
       case 'map':
         return { text: `${mapPercent}%` };
       case 'meta':
-        return { text: 'S-TIER' };
+        return { text: 'T0' };
       case 'calculator':
         return { text: 'ECHO' };
       default:
@@ -211,11 +203,12 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
 
   return (
     <aside
-      className={`hidden md:flex flex-col fixed left-4 top-4 bottom-4 rounded-[26px] border border-white/12 bg-[#0b0d14]/75 backdrop-blur-2xl z-40 overflow-hidden transition-[width] duration-300 ease-in-out solaris-crest ${
-        collapsed ? 'w-20' : 'w-64'
-      }`}
+      style={{
+        width: collapsed ? '80px' : '256px',
+        transition: 'width 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+      }}
+      className="hidden md:flex flex-col fixed left-4 top-4 bottom-4 rounded-[26px] bg-[#0b0d14]/90 backdrop-blur-2xl shadow-[0_28px_70px_rgba(0,0,0,0.9)] z-40 overflow-hidden"
     >
-      {/* Фоновое аудио для мини-плеера сайдбара */}
       <audio
         ref={audioRef}
         src="/login-bgm.mp3"
@@ -225,21 +218,20 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
         onPause={() => setPlaying(false)}
       />
 
-      {/* Декоративное верхнее свечение */}
+      {/* Мягкое внутреннее золотое свечение сверху вместо белой обводки */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -top-20 -left-10 w-48 h-48 rounded-full bg-accent/15 blur-3xl"
+        className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-36 rounded-full bg-accent/15 blur-3xl"
       />
 
-      {/* 1. ШАПКА САЙДБАРА С АНИМИРОВАННЫМ КОМПАСОМ СОЛАРИС-3 */}
+      {/* 1. ШАПКА САЙДБАРА */}
       <Link
         to="/home"
-        className={`relative z-10 pt-5 pb-4 border-b border-white/[0.08] focus-ring flex items-center transition-all ${
+        className={`relative z-10 pt-5 pb-4 border-b border-white/[0.04] focus-ring flex items-center transition-all ${
           collapsed ? 'px-3 justify-center' : 'px-5 gap-3.5 justify-start'
         }`}
       >
-        <div className="relative w-10 h-10 rounded-2xl bg-gradient-to-br from-[#261f18] to-[#12100e] border border-accent/40 flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(202,160,125,0.2)] group">
-          {/* Тонкое вращающееся кольцо вокруг логотипа */}
+        <div className="relative w-10 h-10 rounded-2xl bg-gradient-to-br from-[#261f18] to-[#12100e] flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(202,160,125,0.2)]">
           <svg
             viewBox="0 0 44 44"
             className="absolute inset-0 w-full h-full animate-[spin_26s_linear_infinite] opacity-65 pointer-events-none"
@@ -269,10 +261,10 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
         )}
       </Link>
 
-      {/* 2. КНОПКА ГЛОБАЛЬНОГО ПОИСКА (CTRL + K) */}
+      {/* 2. КНОПКА ГЛОБАЛЬНОГО ПОИСКА */}
       <button
         onClick={onOpenSearch}
-        className={`relative z-10 mx-3.5 mt-3.5 flex items-center rounded-2xl bg-white/[0.035] hover:bg-white/[0.07] border border-white/10 hover:border-accent/45 text-gray-300 hover:text-ivory transition-all focus-ring group ${
+        className={`relative z-10 mx-3.5 mt-3.5 flex items-center rounded-2xl bg-[#131622]/90 hover:bg-[#191d2d] text-gray-300 hover:text-ivory transition-all focus-ring group ${
           collapsed ? 'p-2.5 justify-center' : 'px-3.5 py-2.5 justify-between'
         }`}
         aria-label="Открыть поиск (Ctrl+K)"
@@ -290,13 +282,13 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
           )}
         </div>
         {!collapsed && (
-          <kbd className="px-2 py-0.5 text-[10px] font-mono font-semibold bg-black/50 border border-white/12 rounded-md text-gray-400 shrink-0">
+          <kbd className="px-2 py-0.5 text-[10px] font-mono font-semibold bg-black/50 rounded-md text-gray-400 shrink-0">
             Ctrl K
           </kbd>
         )}
       </button>
 
-      {/* 3. КАТЕГОРИЗИРОВАННОЕ МЕНЮ НАВИГАЦИИ С БЕЙДЖАМИ */}
+      {/* 3. НАВИГАЦИЯ */}
       <nav className="relative z-10 flex-1 px-3 py-3 space-y-4 overflow-y-auto no-scrollbar overflow-x-hidden">
         {groups.map((group) => (
           <div key={group.key} className="space-y-1">
@@ -305,17 +297,14 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
                 <span className="text-[9px] font-extrabold tracking-[0.22em] text-gray-500 uppercase">
                   {group.title}
                 </span>
-                <span className="flex-1 h-[1px] bg-gradient-to-r from-white/[0.07] to-transparent" />
+                <span className="flex-1 h-[1px] bg-gradient-to-r from-white/[0.05] to-transparent" />
               </div>
             ) : (
-              <div className="mx-3 my-1 h-[1px] bg-white/[0.07]" />
+              <div className="mx-3 my-1 h-[1px] bg-white/[0.05]" />
             )}
 
             {group.items.map((item) => {
-              const Icon =
-                item.id === 'bestiary'
-                  ? Skull
-                  : ICONS[item.icon] ?? House;
+              const Icon = item.id === 'bestiary' ? Skull : ICONS[item.icon] ?? House;
               const badge = getBadgeForItem(item.id);
 
               return (
@@ -338,12 +327,11 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
                       {isActive && (
                         <motion.span
                           layoutId="nav-pill"
-                          className="absolute inset-0 rounded-xl bg-gradient-to-r from-accent/25 via-accent/12 to-transparent border border-accent/40 shadow-[0_0_20px_rgba(202,160,125,0.18)]"
+                          className="absolute inset-0 rounded-xl bg-gradient-to-r from-accent/25 via-accent/10 to-transparent shadow-[0_0_20px_rgba(202,160,125,0.14)]"
                           transition={SPRING}
                         />
                       )}
 
-                      {/* Левая золотая риска активного пункта */}
                       {isActive && (
                         <motion.span
                           layoutId="nav-bar"
@@ -356,8 +344,8 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
                         <span
                           className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
                             isActive
-                              ? 'bg-accent/25 text-accent-light border border-accent/40'
-                              : 'bg-white/[0.03] text-gray-400 group-hover:text-ivory group-hover:bg-white/[0.07] border border-white/[0.06]'
+                              ? 'bg-accent/25 text-accent-light'
+                              : 'bg-white/[0.03] text-gray-400 group-hover:text-ivory group-hover:bg-white/[0.07]'
                           }`}
                         >
                           <Icon size={15} />
@@ -372,8 +360,8 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
                         <span
                           className={`relative z-10 px-1.5 py-0.5 rounded-md text-[10px] font-extrabold tracking-wider tabular-nums shrink-0 ${
                             isActive || badge.highlight
-                              ? 'bg-accent/20 text-accent-light border border-accent/35'
-                              : 'bg-white/[0.05] text-gray-400 border border-white/[0.08]'
+                              ? 'bg-accent/20 text-accent-light'
+                              : 'bg-white/[0.05] text-gray-400'
                           }`}
                         >
                           {badge.text}
@@ -387,7 +375,6 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
           </div>
         ))}
 
-        {/* Пункт «Админка» (только для роли admin) */}
         {user?.role === 'admin' && (
           <div className="pt-1">
             <NavLink
@@ -408,12 +395,12 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
                   {isActive && (
                     <motion.span
                       layoutId="nav-pill"
-                      className="absolute inset-0 rounded-xl bg-gradient-to-r from-amber-500/25 via-amber-500/10 to-transparent border border-amber-400/45 shadow-[0_0_20px_rgba(251,191,36,0.2)]"
+                      className="absolute inset-0 rounded-xl bg-gradient-to-r from-amber-500/25 via-amber-500/10 to-transparent"
                       transition={SPRING}
                     />
                   )}
                   <div className="relative z-10 flex items-center gap-3 min-w-0">
-                    <span className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300 flex items-center justify-center shrink-0">
+                    <span className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0">
                       <ShieldCheck size={15} />
                     </span>
                     {!collapsed && (
@@ -421,7 +408,7 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
                     )}
                   </div>
                   {!collapsed && (
-                    <span className="relative z-10 px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/40 text-[9px] font-black uppercase tracking-wider text-amber-200">
+                    <span className="relative z-10 px-1.5 py-0.5 rounded-md bg-amber-500/20 text-[9px] font-black uppercase tracking-wider text-amber-200">
                       ROOT
                     </span>
                   )}
@@ -432,38 +419,28 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
         )}
       </nav>
 
-      {/* 4. МИНИ-ДОК: ФОНОВОЕ РАДИО СОЛАРИС-3 + ТАЙМЕР СБРОСА ДЕЙЛИКОВ */}
+      {/* 4. МИНИ-РАДИО И ТАЙМЕР */}
       {!collapsed ? (
-        <div className="relative z-10 mx-3.5 mb-2.5 p-2.5 rounded-2xl bg-black/45 border border-white/10 space-y-2">
+        <div className="relative z-10 mx-3.5 mb-2.5 p-2.5 rounded-2xl bg-[#111420]/90 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
               onClick={toggleMusic}
               className="flex items-center gap-2 text-left group min-w-0 flex-1 focus-ring rounded-lg"
-              title={playing ? 'Поставить музыку на паузу' : 'Включить фоновую музыку Соларис-3'}
             >
               <span
-                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border transition-colors ${
+                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
                   playing
-                    ? 'bg-accent/25 border-accent text-accent-light'
-                    : 'bg-white/[0.06] border-white/10 text-gray-300 group-hover:text-white'
+                    ? 'bg-accent/25 text-accent-light'
+                    : 'bg-white/[0.06] text-gray-300 group-hover:text-white'
                 }`}
               >
                 {playing ? <Pause size={13} /> : <Play size={13} className="translate-x-[0.5px]" />}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-bold text-ivory truncate">
-                    Solaris-3 Radio
-                  </span>
-                  {playing && (
-                    <span className="flex items-end gap-0.5 h-2.5 shrink-0">
-                      <span className="w-0.5 h-2 bg-accent-light animate-pulse" />
-                      <span className="w-0.5 h-2.5 bg-accent animate-bounce" />
-                      <span className="w-0.5 h-1.5 bg-accent-light animate-pulse" />
-                    </span>
-                  )}
-                </div>
+                <span className="text-[11px] font-bold text-ivory truncate block">
+                  Solaris-3 Radio
+                </span>
                 <span className="block text-[9px] text-gray-500 truncate">
                   {playing ? 'Звучит фоновая тема' : 'Нажми для запуска BGM'}
                 </span>
@@ -474,13 +451,11 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
               type="button"
               onClick={() => setMuted((m) => !m)}
               className="p-1.5 rounded-lg text-gray-400 hover:text-ivory hover:bg-white/10 transition-colors"
-              title={muted ? 'Включить звук' : 'Выключить звук'}
             >
               {muted || volume === 0 ? <VolumeX size={13} /> : <Volume2 size={13} />}
             </button>
           </div>
 
-          {/* Ползунок громкости (показывается, когда играет музыка) */}
           {playing && (
             <input
               type="range"
@@ -497,8 +472,7 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
             />
           )}
 
-          {/* Строка таймера до сброса сервера */}
-          <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1.5 border-t border-white/[0.06]">
+          <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1.5 border-t border-white/[0.05]">
             <span className="flex items-center gap-1">
               <Clock size={11} className="text-accent-light" />
               <span>Сброс сервера:</span>
@@ -511,23 +485,22 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
           type="button"
           onClick={toggleMusic}
           title={playing ? 'Пауза BGM' : 'Включить BGM Соларис-3'}
-          className={`mx-auto mb-2.5 w-10 h-10 rounded-xl border flex items-center justify-center transition-colors ${
+          className={`mx-auto mb-2.5 w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
             playing
-              ? 'bg-accent/25 border-accent text-accent-light'
-              : 'bg-white/[0.04] border-white/10 text-gray-400 hover:text-white'
+              ? 'bg-accent/25 text-accent-light'
+              : 'bg-white/[0.04] text-gray-400 hover:text-white'
           }`}
         >
           {playing ? <Pause size={15} /> : <Play size={15} />}
         </button>
       )}
 
-      {/* 5. НИЖНЯЯ КАРТОЧКА ПРОФИЛЯ С ФОНОВЫМ БАННЕРОМ И КАСТОМНОЙ АВАТАРКОЙ */}
+      {/* 5. НИЖНЯЯ КАРТОЧКА ПРОФИЛЯ */}
       <div
-        className={`relative z-10 mx-3.5 mb-3.5 rounded-2xl border border-white/15 overflow-hidden bg-[#12131c] shadow-lg ${
+        className={`relative z-10 mx-3.5 mb-3.5 rounded-2xl overflow-hidden bg-[#131622] shadow-lg ${
           collapsed ? 'flex justify-center' : ''
         }`}
       >
-        {/* Фоновая шапка пользователя из профиля */}
         {customData.bannerUrl && !collapsed && (
           <img
             src={customData.bannerUrl}
@@ -548,22 +521,14 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
               collapsed ? 'justify-center' : 'justify-start gap-3'
             }`}
             aria-label="Открыть профиль"
-            title="Открыть профиль Ровера"
           >
-            {/* Аватарка с индикатором «В сети» */}
             <div className="relative shrink-0">
-              <div className="w-10 h-10 rounded-xl overflow-hidden border border-accent/60 bg-gradient-to-br from-accent-light to-accent flex items-center justify-center shadow-glow-sm">
-                {avatarSrc ? (
-                  <img
-                    src={avatarSrc}
-                    alt={displayName}
-                    className="w-full h-full object-cover object-top"
-                  />
-                ) : (
-                  <span className="text-bg font-black text-base">
-                    {displayName.charAt(0).toUpperCase()}
-                  </span>
-                )}
+              <div className="w-10 h-10 rounded-xl overflow-hidden bg-gradient-to-br from-accent-light to-accent flex items-center justify-center shadow-glow-sm">
+                <img
+                  src={avatarSrc}
+                  alt={displayName}
+                  className="w-full h-full object-cover object-top"
+                />
               </div>
               <span
                 title="В сети"
@@ -573,11 +538,9 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
 
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="block text-sm font-extrabold text-white truncate">
-                    {displayName}
-                  </span>
-                </div>
+                <span className="block text-sm font-extrabold text-white truncate">
+                  {displayName}
+                </span>
                 <span className="block text-[10px] font-bold tracking-wider uppercase text-accent-light truncate">
                   UL {profile.unionLevel} · РЕЗОНАТОР
                 </span>

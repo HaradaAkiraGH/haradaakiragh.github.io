@@ -1,8 +1,9 @@
-// Бестиарий Соларис-3 (Полный редизайн полок и карточек + встроенный каталог всех материалов до патча 3.7):
-// 1) Коллекционные обложки категорий с мини-витриной предметов и разбивкой по редкости
-// 2) Автоматическое слияние встроенной базы материалов с серверной базой Supabase
-// 3) Фильтрация по подкатегориям материалов, редкости (2★–5★) и кнопка синхронизации в Supabase для админа
+// Бестиарий Соларис-3:
+// 1) Модалки через createPortal(..., document.body) — 100% затемнение экрана сверху донизу (Скрин 2 исправлен)
+// 2) Увеличенные иконки оружия и предметов во весь слот рамки (Скрины 3 и 4 исправлены)
+// 3) Все 163 материала Wuthering Waves в категории «Материалы»
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -75,7 +76,6 @@ const entryToForm = (e: BestiaryEntry): FormState => ({
   props: Object.entries(e.props ?? {}).map(([k, v]) => ({ k, v: String(v) })),
 });
 
-/* Курируемые обложки и описания для главных полок Бестиария */
 const CATEGORY_META: Record<
   string,
   {
@@ -89,7 +89,7 @@ const CATEGORY_META: Record<
 > = {
   Материалы: {
     subtitle:
-      'Боссы вознесения, диковинки Соларис-3, еженедельные трофеи Форте, руда и ядра врагов (патч 3.7)',
+      'Все 163 материала Соларис-3: боссы вознесения, диковинки, еженедельные трофеи Форте, руда и ядра врагов',
     bannerGrad: 'from-amber-500/25 via-[#1c1610] to-[#0a0b10]',
     borderGlow: 'hover:border-amber-400/50',
     accentText: 'text-amber-300',
@@ -131,28 +131,33 @@ const CATEGORY_META: Record<
 
 const RARITY_SLOT_STYLE: Record<number, { bg: string; border: string; badge: string }> = {
   5: {
-    bg: 'from-amber-500/25 via-amber-900/15 to-[#0b0d14]',
-    border: 'border-amber-400/45 group-hover:border-amber-300',
+    bg: 'from-amber-500/30 via-amber-950/25 to-[#0b0d14]',
+    border: 'border-amber-400/50 group-hover:border-amber-300',
     badge: 'bg-amber-400 text-[#09090b]',
   },
   4: {
-    bg: 'from-purple-500/25 via-purple-900/15 to-[#0b0d14]',
-    border: 'border-purple-400/40 group-hover:border-purple-300',
+    bg: 'from-purple-500/30 via-purple-950/25 to-[#0b0d14]',
+    border: 'border-purple-400/45 group-hover:border-purple-300',
     badge: 'bg-purple-500 text-white',
   },
   3: {
-    bg: 'from-sky-500/25 via-sky-900/15 to-[#0b0d14]',
+    bg: 'from-sky-500/25 via-sky-950/20 to-[#0b0d14]',
     border: 'border-sky-400/40 group-hover:border-sky-300',
     badge: 'bg-sky-500 text-[#09090b]',
   },
   2: {
-    bg: 'from-emerald-500/20 via-emerald-900/15 to-[#0b0d14]',
-    border: 'border-emerald-400/35 group-hover:border-emerald-300',
+    bg: 'from-emerald-500/25 via-emerald-950/20 to-[#0b0d14]',
+    border: 'border-emerald-400/40 group-hover:border-emerald-300',
     badge: 'bg-emerald-500 text-[#09090b]',
+  },
+  1: {
+    bg: 'from-zinc-600/25 via-zinc-900/20 to-[#0b0d14]',
+    border: 'border-zinc-500/40 group-hover:border-zinc-300',
+    badge: 'bg-zinc-400 text-[#09090b]',
   },
 };
 
-/* Иконка предмета в слоте инвентаря (object-contain, без обрезки краёв) */
+/* Иконка оружия/предмета, увеличенная на всю площадь рамки (Скрины 3 и 4) */
 const BestiaryItemIcon = ({
   entry,
   size = 'md',
@@ -166,10 +171,10 @@ const BestiaryItemIcon = ({
   const rStyle = RARITY_SLOT_STYLE[entry.rarity ?? 4] ?? RARITY_SLOT_STYLE[4];
   const dims =
     size === 'lg'
-      ? 'w-24 h-24 rounded-2xl p-3'
+      ? 'w-24 h-24 rounded-2xl'
       : size === 'sm'
-      ? 'w-11 h-11 rounded-xl p-1.5'
-      : 'w-16 h-16 rounded-2xl p-2';
+      ? 'w-11 h-11 rounded-xl'
+      : 'w-16 h-16 rounded-2xl';
 
   return (
     <div
@@ -180,7 +185,7 @@ const BestiaryItemIcon = ({
           src={entry.image}
           alt={entry.name}
           onError={() => setFailed(true)}
-          className="w-full h-full object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.85)] transition-transform duration-300 group-hover:scale-110"
+          className="w-full h-full object-cover scale-[1.18] group-hover:scale-[1.28] drop-shadow-[0_4px_10px_rgba(0,0,0,0.85)] transition-transform duration-300"
           draggable={false}
         />
       ) : (
@@ -210,7 +215,7 @@ export const BestiaryPage = () => {
   useDocumentMeta({
     title: 'Бестиарий и Архив Материалов — Stellar Wiki',
     description:
-      'Полная база предметов Wuthering Waves (патч 3.7): все материалы вознесения, боссы, цветы, оружие, эхо и враги.',
+      'Полная база предметов Wuthering Waves (163 материала, оружие, эхо и враги).',
   });
 
   const { user, token } = useAuth();
@@ -248,7 +253,6 @@ export const BestiaryPage = () => {
     load();
   }, []);
 
-  // Объединяем серверные записи с нашей полной встроенной базой материалов (без дублей по имени)
   const allEntries = useMemo(() => {
     const builtin = getBuiltinMaterialsAsEntries();
     const existingNames = new Set(
@@ -264,7 +268,6 @@ export const BestiaryPage = () => {
     return merged;
   }, [serverEntries]);
 
-  // Группировка по категориям для витрины полок
   const shelves = useMemo(() => {
     const map = new Map<string, BestiaryEntry[]>();
     for (const item of allEntries) {
@@ -290,7 +293,6 @@ export const BestiaryPage = () => {
     });
   }, [allEntries]);
 
-  // Фильтрация записей внутри выбранной категории (или при глобальном поиске)
   const filteredEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
     return allEntries.filter((e) => {
@@ -316,7 +318,7 @@ export const BestiaryPage = () => {
   const syncMaterialsToSupabase = async () => {
     if (!token || !isAdmin) return;
     setBusy(true);
-    setSyncStatus('Синхронизация материалов с базой Supabase...');
+    setSyncStatus('Синхронизация 163 материалов с базой Supabase...');
     try {
       const existingNames = new Set(
         serverEntries
@@ -343,8 +345,8 @@ export const BestiaryPage = () => {
       await load();
       setSyncStatus(
         uploaded > 0
-          ? `Успешно записано в БД Supabase: ${uploaded} новых материалов!`
-          : 'Все материалы уже синхронизированы с БД Supabase.',
+          ? `Успешно записано в БД Supabase: ${uploaded} материалов!`
+          : 'Все 163 материала уже синхронизированы с БД Supabase.',
       );
       setTimeout(() => setSyncStatus(null), 5000);
     } catch (e) {
@@ -430,12 +432,7 @@ export const BestiaryPage = () => {
           <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.2em] text-accent-light mb-1">
             <Sparkles size={13} />
             <span>БАЗА ДАННЫХ СОЛАРИС-3 · ПАТЧ 3.7</span>
-            {loading && (
-              <RefreshCw
-                size={12}
-                className="animate-spin text-accent-light ml-1"
-              />
-            )}
+            {loading && <RefreshCw size={12} className="animate-spin text-accent-light ml-1" />}
           </div>
           <div className="flex items-center gap-3">
             {activeCategory && (
@@ -460,11 +457,10 @@ export const BestiaryPage = () => {
           <p className="text-gray-400 text-sm mt-1">
             {activeCategory
               ? CATEGORY_META[activeCategory]?.subtitle ?? `Все записи категории «${activeCategory}»`
-              : 'Интерактивное хранилище материалов вознесения, оружия, эхо и бестий Wuthering Waves'}
+              : 'Интерактивное хранилище 163 материалов вознесения, оружия, эхо и бестий Wuthering Waves'}
           </p>
         </div>
 
-        {/* Кнопки администратора */}
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           {isAdmin && (
             <>
@@ -473,10 +469,9 @@ export const BestiaryPage = () => {
                 onClick={syncMaterialsToSupabase}
                 disabled={busy}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 text-xs font-bold text-ivory transition-all focus-ring disabled:opacity-50"
-                title="Записать все встроенные материалы в облачную таблицу bestiary"
               >
                 <CloudUpload size={15} className="text-accent-light" />
-                <span>Синхронизировать материалы в БД</span>
+                <span>Синхронизировать 163 материала в БД</span>
               </button>
 
               <button
@@ -499,7 +494,6 @@ export const BestiaryPage = () => {
         </div>
       </div>
 
-      {/* Уведомление синхронизации */}
       {syncStatus && (
         <div className="glass-panel px-4 py-3 flex items-center gap-2.5 border-emerald-400/40 text-emerald-200 text-xs font-bold">
           <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
@@ -522,7 +516,7 @@ export const BestiaryPage = () => {
         </div>
       )}
 
-      {/* ==================== ПАНЕЛЬ ПОИСКА И БЫСТРОГО ПЕРЕКЛЮЧЕНИЯ ПОЛОК ==================== */}
+      {/* ==================== ПАНЕЛЬ ПОИСКА И ПОЛОК ==================== */}
       <div className="glass-panel p-4 space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[240px]">
@@ -534,7 +528,7 @@ export const BestiaryPage = () => {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Поиск по названию материала, оружия, босса или имени персонажа (например: Camellya, Jinhsi, флогистон)..."
+              placeholder="Поиск по 163 материалам, оружию, боссам или имени персонажа..."
               className="pl-10 pr-9 py-2.5 bg-[#090a10] border border-white/12 rounded-xl text-sm text-ivory placeholder-gray-500 focus-ring w-full"
             />
             {search && (
@@ -599,7 +593,7 @@ export const BestiaryPage = () => {
                         : 'bg-white/[0.03] border-white/10 text-gray-400 hover:text-white'
                     }`}
                   >
-                    {sub === 'all' ? 'Все типы материалов' : sub}
+                    {sub === 'all' ? 'Все типы материалов (163)' : sub}
                   </button>
                 ))}
               </div>
@@ -630,107 +624,105 @@ export const BestiaryPage = () => {
         )}
       </div>
 
-      {/* ==================== РЕЖИМ 1: ВИТРИНА ПОЛОК КАТЕГОРИЙ ==================== */}
+      {/* ==================== РЕЖИМ 1: ВИТРИНА ПОЛОК ==================== */}
       {activeCategory === null && search.trim().length === 0 ? (
-        <div className="space-y-7">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {shelves.map((sh) => {
-              const meta = CATEGORY_META[sh.category] ?? {
-                subtitle: `Все предметы раздела «${sh.category}»`,
-                bannerGrad: 'from-accent/25 via-[#171412] to-[#0a0b10]',
-                borderGlow: 'hover:border-accent/50',
-                accentText: 'text-accent-light',
-                icon: Archive,
-                coverArt:
-                  'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=900&q=80',
-              };
-              const Icon = meta.icon;
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {shelves.map((sh) => {
+            const meta = CATEGORY_META[sh.category] ?? {
+              subtitle: `Все предметы раздела «${sh.category}»`,
+              bannerGrad: 'from-accent/25 via-[#171412] to-[#0a0b10]',
+              borderGlow: 'hover:border-accent/50',
+              accentText: 'text-accent-light',
+              icon: Archive,
+              coverArt:
+                'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=900&q=80',
+            };
+            const Icon = meta.icon;
 
-              return (
-                <button
-                  key={sh.category}
-                  type="button"
-                  onClick={() => setActiveCategory(sh.category)}
-                  className={`group relative rounded-3xl overflow-hidden border border-white/12 bg-[#0b0d14] text-left transition-all duration-300 hover:-translate-y-1 shadow-[0_20px_55px_rgba(0,0,0,0.75)] ${meta.borderGlow} focus-ring`}
-                >
-                  <div className="relative h-56 sm:h-64 w-full overflow-hidden">
-                    <img
-                      src={meta.coverArt}
-                      alt={sh.category}
-                      className="w-full h-full object-cover object-center opacity-40 group-hover:scale-105 group-hover:opacity-55 transition-all duration-700"
-                      draggable={false}
-                    />
-                    <div
-                      className={`absolute inset-0 bg-gradient-to-br ${meta.bannerGrad} mix-blend-multiply`}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0b0d14] via-[#0b0d14]/65 to-transparent" />
+            return (
+              <button
+                key={sh.category}
+                type="button"
+                onClick={() => setActiveCategory(sh.category)}
+                className={`group relative rounded-3xl overflow-hidden border border-white/10 bg-[#0b0d14] text-left transition-all duration-300 hover:-translate-y-1 shadow-[0_20px_55px_rgba(0,0,0,0.75)] ${meta.borderGlow} focus-ring`}
+              >
+                <div className="relative h-56 sm:h-64 w-full overflow-hidden">
+                  <img
+                    src={meta.coverArt}
+                    alt={sh.category}
+                    className="w-full h-full object-cover object-center opacity-40 group-hover:scale-105 group-hover:opacity-55 transition-all duration-700"
+                    draggable={false}
+                  />
+                  <div
+                    className={`absolute inset-0 bg-gradient-to-br ${meta.bannerGrad} mix-blend-multiply`}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0b0d14] via-[#0b0d14]/65 to-transparent" />
 
-                    <div className="absolute top-4 left-5 right-5 flex items-center justify-between gap-2">
-                      <span
-                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/15 text-xs font-extrabold ${meta.accentText}`}
-                      >
-                        <Icon size={15} />
-                        <span>Раздел архива</span>
-                      </span>
+                  <div className="absolute top-4 left-5 right-5 flex items-center justify-between gap-2">
+                    <span
+                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/15 text-xs font-extrabold ${meta.accentText}`}
+                    >
+                      <Icon size={15} />
+                      <span>Раздел архива</span>
+                    </span>
 
-                      <span className="px-3 py-1 rounded-xl bg-black/70 backdrop-blur-md border border-white/15 text-xs font-black text-white tabular-nums">
-                        {sh.count} предм.
-                      </span>
-                    </div>
-
-                    <div className="absolute bottom-4 right-5 hidden sm:flex items-center -space-x-2">
-                      {sh.samples.map((samp) => (
-                        <div
-                          key={samp.id}
-                          className="w-12 h-12 rounded-2xl bg-[#0e1018]/95 border border-white/20 p-1.5 shadow-xl flex items-center justify-center group-hover:translate-y-[-2px] transition-transform"
-                        >
-                          {samp.image ? (
-                            <img
-                              src={samp.image}
-                              alt=""
-                              className="w-full h-full object-contain"
-                              draggable={false}
-                            />
-                          ) : (
-                            <span className="text-[10px] font-bold text-accent-light">
-                              {samp.name.slice(0, 2)}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="absolute bottom-4 left-5 right-5 sm:right-48">
-                      <h2 className="text-2xl sm:text-3xl font-black text-white group-hover:text-accent-light transition-colors">
-                        {sh.category}
-                      </h2>
-                      <p className="text-xs text-gray-300 mt-1 line-clamp-2 leading-relaxed">
-                        {meta.subtitle}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="px-5 py-3.5 bg-[#0e1018] border-t border-white/[0.08] flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-3">
-                      {sh.fives > 0 && (
-                        <span className="text-amber-300 font-bold">5★: {sh.fives}</span>
-                      )}
-                      {sh.fours > 0 && (
-                        <span className="text-purple-300 font-bold">4★: {sh.fours}</span>
-                      )}
-                      <span className="text-gray-400">Всего записей: {sh.count}</span>
-                    </div>
-                    <span className="font-extrabold text-accent-light group-hover:translate-x-1 transition-transform">
-                      Открыть полку →
+                    <span className="px-3 py-1 rounded-xl bg-black/70 backdrop-blur-md border border-white/15 text-xs font-black text-white tabular-nums">
+                      {sh.count} предм.
                     </span>
                   </div>
-                </button>
-              );
-            })}
-          </div>
+
+                  <div className="absolute bottom-4 right-5 hidden sm:flex items-center -space-x-2">
+                    {sh.samples.map((samp) => (
+                      <div
+                        key={samp.id}
+                        className="w-12 h-12 rounded-2xl bg-[#0e1018]/95 border border-white/20 overflow-hidden shadow-xl flex items-center justify-center group-hover:translate-y-[-2px] transition-transform"
+                      >
+                        {samp.image ? (
+                          <img
+                            src={samp.image}
+                            alt=""
+                            className="w-full h-full object-cover scale-110"
+                            draggable={false}
+                          />
+                        ) : (
+                          <span className="text-[10px] font-bold text-accent-light">
+                            {samp.name.slice(0, 2)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="absolute bottom-4 left-5 right-5 sm:right-48">
+                    <h2 className="text-2xl sm:text-3xl font-black text-white group-hover:text-accent-light transition-colors">
+                      {sh.category}
+                    </h2>
+                    <p className="text-xs text-gray-300 mt-1 line-clamp-2 leading-relaxed">
+                      {meta.subtitle}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="px-5 py-3.5 bg-[#0e1018] border-t border-white/[0.06] flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-3">
+                    {sh.fives > 0 && (
+                      <span className="text-amber-300 font-bold">5★: {sh.fives}</span>
+                    )}
+                    {sh.fours > 0 && (
+                      <span className="text-purple-300 font-bold">4★: {sh.fours}</span>
+                    )}
+                    <span className="text-gray-400">Всего записей: {sh.count}</span>
+                  </div>
+                  <span className="font-extrabold text-accent-light group-hover:translate-x-1 transition-transform">
+                    Открыть полку →
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       ) : (
-        /* ==================== РЕЖИМ 2: СЕТКА ПРЕДМЕТОВ ВНУТРИ ПОЛКИ / ПОИСКА ==================== */
+        /* ==================== РЕЖИМ 2: СЕТКА ПРЕДМЕТОВ ==================== */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
           {filteredEntries.map((e) => {
             const subcat = e.props?.['Подкатегория'] || e.category;
@@ -775,281 +767,280 @@ export const BestiaryPage = () => {
               </button>
             );
           })}
-
-          {filteredEntries.length === 0 && (
-            <div className="col-span-full glass-panel py-16 text-center space-y-2">
-              <Archive size={36} className="text-gray-500 mx-auto" />
-              <p className="text-base font-bold text-white">Записи не найдены</p>
-              <p className="text-xs text-gray-400">
-                Попробуй сбросить фильтр редкости или изменить поисковый запрос
-              </p>
-            </div>
-          )}
         </div>
       )}
 
-      {/* ==================== МОДАЛКА ДЕТАЛЬНОГО ПРОСМОТРА ПРЕДМЕТА ==================== */}
-      <AnimatePresence>
-        {detail && (
-          <div
-            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
-            onClick={() => setDetail(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ duration: 0.2 }}
-              onClick={(e) => e.stopPropagation()}
-              className="glass-panel w-full max-w-2xl p-6 sm:p-7 max-h-[86vh] overflow-y-auto space-y-5"
-            >
-              <div className="flex items-start gap-4">
-                <BestiaryItemIcon entry={detail} size="lg" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className="px-2.5 py-0.5 rounded-lg bg-accent/20 border border-accent/40 text-accent-light text-[11px] font-extrabold uppercase tracking-wider">
-                      {detail.category}
-                    </span>
-                    {detail.rarity !== null && (
-                      <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-black">
-                        {'★'.repeat(detail.rarity)}
-                      </span>
-                    )}
+      {/* ==================== ПОРТАЛ МОДАЛКИ ПРОСМОТРА (100% ЭКРАНА СВЕРХУ ДОНИЗУ) ==================== */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <AnimatePresence>
+            {detail && (
+              <div
+                style={{ top: 0, left: 0, right: 0, bottom: 0, margin: 0 }}
+                className="fixed inset-0 z-[200] bg-black/85 backdrop-blur-md flex items-center justify-center p-4"
+                onClick={() => setDetail(null)}
+              >
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="glass-panel w-full max-w-2xl p-6 sm:p-7 max-h-[88vh] overflow-y-auto space-y-5"
+                >
+                  <div className="flex items-start gap-4">
+                    <BestiaryItemIcon entry={detail} size="lg" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="px-2.5 py-0.5 rounded-lg bg-accent/20 border border-accent/40 text-accent-light text-[11px] font-extrabold uppercase tracking-wider">
+                          {detail.category}
+                        </span>
+                        {detail.rarity !== null && (
+                          <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-black">
+                            {'★'.repeat(detail.rarity)}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-xl sm:text-2xl font-black text-white leading-snug">
+                        {detail.name}
+                      </h3>
+                      {detail.tags && (
+                        <p className="flex items-center gap-1.5 text-xs text-gray-400 mt-1.5">
+                          <Tag size={12} className="text-accent-light shrink-0" />
+                          <span>{detail.tags}</span>
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDetail(null)}
+                      className="p-2 rounded-xl bg-white/5 text-gray-400 hover:text-white"
+                    >
+                      <X size={18} />
+                    </button>
                   </div>
-                  <h3 className="text-xl sm:text-2xl font-black text-white leading-snug">
-                    {detail.name}
-                  </h3>
-                  {detail.tags && (
-                    <p className="flex items-center gap-1.5 text-xs text-gray-400 mt-1.5">
-                      <Tag size={12} className="text-accent-light shrink-0" />
-                      <span>{detail.tags}</span>
+
+                  {detail.description && (
+                    <p className="text-sm text-gray-200 leading-relaxed bg-white/[0.03] border border-white/10 rounded-2xl p-4">
+                      {detail.description}
                     </p>
                   )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDetail(null)}
-                  className="p-2 rounded-xl bg-white/5 text-gray-400 hover:text-white"
-                >
-                  <X size={18} />
-                </button>
-              </div>
 
-              {detail.description && (
-                <p className="text-sm text-gray-200 leading-relaxed bg-white/[0.03] border border-white/10 rounded-2xl p-4">
-                  {detail.description}
-                </p>
-              )}
-
-              {Object.keys(detail.props ?? {}).length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {Object.entries(detail.props).map(([k, v]) => (
-                    <div
-                      key={k}
-                      className="p-3.5 rounded-2xl bg-[#090a10]/80 border border-white/10"
-                    >
-                      <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                        {k}
-                      </span>
-                      <span className="block text-sm font-bold text-ivory mt-1">{String(v)}</span>
+                  {Object.keys(detail.props ?? {}).length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {Object.entries(detail.props).map(([k, v]) => (
+                        <div
+                          key={k}
+                          className="p-3.5 rounded-2xl bg-[#090a10]/80 border border-white/10"
+                        >
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                            {k}
+                          </span>
+                          <span className="block text-sm font-bold text-ivory mt-1">
+                            {String(v)}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {isAdmin && (
-                <div className="flex flex-wrap justify-end gap-2.5 pt-3 border-t border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setForm(entryToForm(detail));
-                      setDetail(null);
-                    }}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 text-xs font-bold text-ivory"
-                  >
-                    <Pencil size={14} />
-                    <span>Изменить</span>
-                  </button>
-                  {detail.id < 9000 && (
-                    <button
-                      type="button"
-                      onClick={() => removeEntry(detail.id)}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/30 text-xs font-bold text-rose-300"
-                    >
-                      <Trash2 size={14} />
-                      <span>Удалить</span>
-                    </button>
                   )}
-                </div>
-              )}
-            </motion.div>
-          </div>
+
+                  {isAdmin && (
+                    <div className="flex flex-wrap justify-end gap-2.5 pt-3 border-t border-white/10">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm(entryToForm(detail));
+                          setDetail(null);
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 text-xs font-bold text-ivory"
+                      >
+                        <Pencil size={14} />
+                        <span>Изменить</span>
+                      </button>
+                      {detail.id < 9000 && (
+                        <button
+                          type="button"
+                          onClick={() => removeEntry(detail.id)}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/30 text-xs font-bold text-rose-300"
+                        >
+                          <Trash2 size={14} />
+                          <span>Удалить</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body,
         )}
-      </AnimatePresence>
 
-      {/* ==================== МОДАЛКА СОЗДАНИЯ / РЕДАКТИРОВАНИЯ (ДЛЯ АДМИНА) ==================== */}
-      <AnimatePresence>
-        {form && (
-          <div
-            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
-            onClick={() => setForm(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              onClick={(e) => e.stopPropagation()}
-              className="glass-panel w-full max-w-2xl p-6 sm:p-7 max-h-[88vh] overflow-y-auto space-y-4"
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                <h3 className="text-lg font-extrabold text-white">
-                  {form.id === null ? 'Новая запись Бестиария' : 'Редактировать запись'}
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setForm(null)}
-                  className="p-2 rounded-xl bg-white/5 text-gray-400 hover:text-white"
+      {/* ==================== ПОРТАЛ МОДАЛКИ РЕДАКТИРОВАНИЯ ==================== */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <AnimatePresence>
+            {form && (
+              <div
+                style={{ top: 0, left: 0, right: 0, bottom: 0, margin: 0 }}
+                className="fixed inset-0 z-[200] bg-black/85 backdrop-blur-md flex items-center justify-center p-4"
+                onClick={() => setForm(null)}
+              >
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="glass-panel w-full max-w-2xl p-6 sm:p-7 max-h-[88vh] overflow-y-auto space-y-4"
                 >
-                  <X size={18} />
-                </button>
-              </div>
-
-              {msg && (
-                <p className="p-3 rounded-xl bg-rose-500/15 border border-rose-400/30 text-xs text-rose-200">
-                  {msg}
-                </p>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <label className="block">
-                  <span className={labelClass}>Категория</span>
-                  <input
-                    value={form.category}
-                    onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    placeholder="Материалы / Оружие / Эхо / Враги"
-                    className={inputClass}
-                  />
-                </label>
-                <label className="block sm:col-span-2">
-                  <span className={labelClass}>Название</span>
-                  <input
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Например: Topological Confinement"
-                    className={inputClass}
-                  />
-                </label>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <label className="block">
-                  <span className={labelClass}>Редкость</span>
-                  <select
-                    value={form.rarity}
-                    onChange={(e) => setForm({ ...form, rarity: e.target.value })}
-                    className={inputClass}
-                  >
-                    <option value="">Без редкости</option>
-                    <option value="2">2★ (Зелёный)</option>
-                    <option value="3">3★ (Синий)</option>
-                    <option value="4">4★ (Фиолетовый)</option>
-                    <option value="5">5★ (Золотой)</option>
-                  </select>
-                </label>
-                <label className="block sm:col-span-2">
-                  <span className={labelClass}>URL иконки / картинки</span>
-                  <input
-                    value={form.image}
-                    onChange={(e) => setForm({ ...form, image: e.target.value })}
-                    placeholder="https://... или /images/..."
-                    className={inputClass}
-                  />
-                </label>
-              </div>
-
-              <label className="block">
-                <span className={labelClass}>Описание</span>
-                <textarea
-                  rows={3}
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className={inputClass}
-                />
-              </label>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className={labelClass}>Характеристики (ключ — значение)</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setForm({ ...form, props: [...form.props, { k: '', v: '' }] })
-                    }
-                    className="text-xs font-bold text-accent-light hover:underline"
-                  >
-                    + Добавить свойство
-                  </button>
-                </div>
-                {form.props.map((p, idx) => (
-                  <div key={idx} className="flex gap-2">
-                    <input
-                      value={p.k}
-                      onChange={(e) => setProp(idx, { k: e.target.value })}
-                      placeholder="Свойство (Источник)"
-                      className={inputClass}
-                    />
-                    <input
-                      value={p.v}
-                      onChange={(e) => setProp(idx, { v: e.target.value })}
-                      placeholder="Значение (Босс: Fallacy of No Return)"
-                      className={inputClass}
-                    />
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <h3 className="text-lg font-extrabold text-white">
+                      {form.id === null ? 'Новая запись Бестиария' : 'Редактировать запись'}
+                    </h3>
                     <button
                       type="button"
-                      onClick={() =>
-                        setForm({
-                          ...form,
-                          props: form.props.filter((_, j) => j !== idx),
-                        })
-                      }
-                      className="p-2 text-gray-500 hover:text-rose-400"
+                      onClick={() => setForm(null)}
+                      className="p-2 rounded-xl bg-white/5 text-gray-400 hover:text-white"
                     >
-                      <X size={16} />
+                      <X size={18} />
                     </button>
                   </div>
-                ))}
-              </div>
 
-              <label className="block">
-                <span className={labelClass}>Теги для поиска (через запятую)</span>
-                <input
-                  value={form.tags}
-                  onChange={(e) => setForm({ ...form, tags: e.target.value })}
-                  className={inputClass}
-                />
-              </label>
+                  {msg && (
+                    <p className="p-3 rounded-xl bg-rose-500/15 border border-rose-400/30 text-xs text-rose-200">
+                      {msg}
+                    </p>
+                  )}
 
-              <div className="flex justify-end gap-2.5 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setForm(null)}
-                  className="px-4 py-2 rounded-xl bg-white/5 text-xs font-bold text-gray-300"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  onClick={saveForm}
-                  disabled={busy}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] text-xs font-extrabold"
-                >
-                  {busy ? 'Сохранение...' : 'Сохранить'}
-                </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <label className="block">
+                      <span className={labelClass}>Категория</span>
+                      <input
+                        value={form.category}
+                        onChange={(e) => setForm({ ...form, category: e.target.value })}
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className={labelClass}>Название</span>
+                      <input
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                        className={inputClass}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <label className="block">
+                      <span className={labelClass}>Редкость</span>
+                      <select
+                        value={form.rarity}
+                        onChange={(e) => setForm({ ...form, rarity: e.target.value })}
+                        className={inputClass}
+                      >
+                        <option value="">Без редкости</option>
+                        <option value="2">2★ (Зелёный)</option>
+                        <option value="3">3★ (Синий)</option>
+                        <option value="4">4★ (Фиолетовый)</option>
+                        <option value="5">5★ (Золотой)</option>
+                      </select>
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className={labelClass}>URL иконки / картинки</span>
+                      <input
+                        value={form.image}
+                        onChange={(e) => setForm({ ...form, image: e.target.value })}
+                        className={inputClass}
+                      />
+                    </label>
+                  </div>
+
+                  <label className="block">
+                    <span className={labelClass}>Описание</span>
+                    <textarea
+                      rows={3}
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      className={inputClass}
+                    />
+                  </label>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className={labelClass}>Характеристики</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm({ ...form, props: [...form.props, { k: '', v: '' }] })
+                        }
+                        className="text-xs font-bold text-accent-light hover:underline"
+                      >
+                        + Добавить свойство
+                      </button>
+                    </div>
+                    {form.props.map((p, idx) => (
+                      <div key={idx} className="flex gap-2">
+                        <input
+                          value={p.k}
+                          onChange={(e) => setProp(idx, { k: e.target.value })}
+                          placeholder="Свойство"
+                          className={inputClass}
+                        />
+                        <input
+                          value={p.v}
+                          onChange={(e) => setProp(idx, { v: e.target.value })}
+                          placeholder="Значение"
+                          className={inputClass}
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              props: form.props.filter((_, j) => j !== idx),
+                            })
+                          }
+                          className="p-2 text-gray-500 hover:text-rose-400"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <label className="block">
+                    <span className={labelClass}>Теги</span>
+                    <input
+                      value={form.tags}
+                      onChange={(e) => setForm({ ...form, tags: e.target.value })}
+                      className={inputClass}
+                    />
+                  </label>
+
+                  <div className="flex justify-end gap-2.5 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setForm(null)}
+                      className="px-4 py-2 rounded-xl bg-white/5 text-xs font-bold text-gray-300"
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveForm}
+                      disabled={busy}
+                      className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] text-xs font-extrabold"
+                    >
+                      {busy ? 'Сохранение...' : 'Сохранить'}
+                    </button>
+                  </div>
+                </motion.div>
               </div>
-            </motion.div>
-          </div>
+            )}
+          </AnimatePresence>,
+          document.body,
         )}
-      </AnimatePresence>
     </div>
   );
 };
