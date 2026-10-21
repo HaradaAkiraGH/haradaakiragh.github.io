@@ -1,6 +1,6 @@
 // Профиль игрока Stellar Wiki:
 // Расширенный макет, анимированные SVG-рамки аватара, игровые титулы WuWa,
-// фактическая дата регистрации, автоматический статус онлайна и расчёт уровня
+// авто-подсчёт созвездий (S0–S6) из круток на витрину профиля и сводка удачи
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,6 +23,7 @@ import {
   LayoutGrid,
   Award,
   Calendar,
+  Dice5,
 } from 'lucide-react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useAuth } from '../hooks/useAuth';
@@ -31,7 +32,12 @@ import { CHARACTERS, getCharacterById } from '../data/characters';
 import { MAP_MARKERS } from '../data/map';
 import { IMAGES } from '../data/images';
 import { ImagePlaceholder } from '../components/ui/ImagePlaceholder';
-import { apiGetProfile, apiSaveProfile, API_ENABLED } from '../utils/api';
+import { apiGetProfile, apiSaveProfile, apiGetPulls, API_ENABLED } from '../utils/api';
+import {
+  savePullsCache,
+  getCachedResonanceChains,
+  getCachedLuckSummary,
+} from '../utils/pullMatch';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
 /* ==================== КАТАЛОГ КАСТОМНЫХ SVG-РАМОК АВАТАРКИ ==================== */
@@ -133,7 +139,6 @@ const FrameOrnamentSVG = ({ frameId }: { frameId: string }) => {
     case 'solaris-astrolabe':
       return (
         <div className="absolute -inset-3.5 pointer-events-none z-20">
-          {/* Внешнее вращающееся кольцо астролябии */}
           <svg
             viewBox="0 0 140 140"
             className="w-full h-full animate-[spin_24s_linear_infinite] drop-shadow-[0_0_8px_rgba(230,201,168,0.8)]"
@@ -164,13 +169,11 @@ const FrameOrnamentSVG = ({ frameId }: { frameId: string }) => {
               strokeOpacity="0.5"
               strokeDasharray="24 12"
             />
-            {/* Четыре орбитальных узла */}
             <polygon points="70,2 73,8 70,14 67,8" fill="#fff7ed" />
             <polygon points="70,138 73,132 70,126 67,132" fill="#caa07d" />
             <polygon points="2,70 8,73 14,70 8,67" fill="#caa07d" />
             <polygon points="138,70 132,73 126,70 132,67" fill="#fff7ed" />
           </svg>
-          {/* Статичная верхняя корона-звезда Соларис */}
           <svg
             viewBox="0 0 140 140"
             className="absolute inset-0 w-full h-full drop-shadow-[0_0_10px_rgba(255,247,237,0.95)]"
@@ -215,7 +218,6 @@ const FrameOrnamentSVG = ({ frameId }: { frameId: string }) => {
               </g>
             ))}
           </svg>
-          {/* Крупный багровый цветок Камеллии в правом нижнем углу */}
           <svg
             viewBox="0 0 140 140"
             className="absolute inset-0 w-full h-full drop-shadow-[0_0_12px_rgba(225,29,72,0.95)]"
@@ -270,7 +272,6 @@ const FrameOrnamentSVG = ({ frameId }: { frameId: string }) => {
               strokeDasharray="30 15"
             />
           </svg>
-          {/* Эфирные бабочки Хранительницы Берега */}
           <svg
             viewBox="0 0 140 140"
             className="absolute inset-0 w-full h-full drop-shadow-[0_0_12px_rgba(56,189,248,1)]"
@@ -317,7 +318,6 @@ const FrameOrnamentSVG = ({ frameId }: { frameId: string }) => {
               stroke="url(#jinhsiGrad)"
               strokeWidth="2.2"
             />
-            {/* Рога и корона небесного дракона сверху */}
             <path
               d="M45 14 C36 2, 52 0, 60 10 L70 2 L80 10 C88 0, 104 2, 95 14"
               fill="none"
@@ -353,7 +353,6 @@ const FrameOrnamentSVG = ({ frameId }: { frameId: string }) => {
               strokeWidth="2.2"
               strokeDasharray="28 6"
             />
-            {/* Огненные перья по бокам */}
             <path
               d="M10 85 C2 65, 10 40, 24 24 C16 45, 16 65, 20 82 Z"
               fill="url(#phoenixGrad)"
@@ -762,7 +761,6 @@ const FramedAvatar = ({
         />
       )}
 
-      {/* Векторный SVG-орнамент поверх аватара */}
       <FrameOrnamentSVG frameId={frame.id} />
 
       <div
@@ -833,7 +831,7 @@ const TitleBadge = ({
 export const ProfilePage = () => {
   useDocumentMeta({
     title: 'Профиль — Stellar Wiki',
-    description: 'Персональный профиль Ровера: кастомизация, титулы Wuthering Waves, уровень и достижения.',
+    description: 'Персональный профиль Ровера: кастомизация, титулы Wuthering Waves, созвездия S0–S6 и достижения.',
   });
 
   const { user, token } = useAuth();
@@ -843,6 +841,12 @@ export const ProfilePage = () => {
     DEFAULT_CUSTOM,
   );
   const [collected] = useLocalStorage<string[]>('ww_map_collected', []);
+
+  // Созвездия из круток (S0–S6) и сводка удачи
+  const [pullChains, setPullChains] = useState<Record<string, number>>(() =>
+    getCachedResonanceChains(),
+  );
+  const [luckSummary] = useState(() => getCachedLuckSummary());
 
   // Вкладки правой панели
   const [activeSection, setActiveSection] = useState<
@@ -857,7 +861,7 @@ export const ProfilePage = () => {
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
 
-  // Реальный статус «В сети» / «Не в сети» (отслеживается автоматически, без ручного редактирования)
+  // Реальный статус «В сети» / «Не в сети»
   const [isBrowserOnline, setIsBrowserOnline] = useState<boolean>(() =>
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   );
@@ -873,7 +877,7 @@ export const ProfilePage = () => {
     };
   }, []);
 
-  // Фактическая дата регистрации аккаунта (нередактируемая)
+  // Фактическая дата регистрации аккаунта
   const factualRegistrationDate = useMemo(() => {
     const anyUser = user as unknown as Record<string, unknown> | null;
     const serverDate = anyUser?.createdAt || anyUser?.created_at;
@@ -905,6 +909,7 @@ export const ProfilePage = () => {
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Подгружаем профиль и крутки с сервера для автоматического подсчёта S0–S6
   useEffect(() => {
     if (!API_ENABLED || !token) return;
     apiGetProfile(token)
@@ -920,6 +925,15 @@ export const ProfilePage = () => {
               echoSet: r.echoSet,
             })),
           }));
+        }
+      })
+      .catch(() => {});
+
+    apiGetPulls(token)
+      .then((pullsData) => {
+        if (pullsData.pulls && pullsData.pulls.length > 0) {
+          savePullsCache(pullsData.pulls);
+          setPullChains(getCachedResonanceChains());
         }
       })
       .catch(() => {});
@@ -947,7 +961,6 @@ export const ProfilePage = () => {
     [collected],
   );
 
-  // Достижения профиля
   const achievements = useMemo(
     () => [
       {
@@ -967,8 +980,8 @@ export const ProfilePage = () => {
       {
         id: 'a3',
         title: 'Коллекционер резонанса',
-        desc: 'Добавить персонажей в ростер или витрину',
-        done: profile.roster.length >= 5 || custom.favoriteCharIds.length >= 4,
+        desc: 'Импортировать крутки или заполнить витрину',
+        done: Object.keys(pullChains).length > 0 || custom.favoriteCharIds.length >= 4,
         reward: 'Титул «Собиратель редкостей»',
       },
       {
@@ -986,16 +999,16 @@ export const ProfilePage = () => {
         reward: 'Рамка «Астролябия Соларис»',
       },
     ],
-    [profile.roster.length, custom.favoriteCharIds.length, collected.length, profile.unionLevel],
+    [pullChains, custom.favoriteCharIds.length, collected.length, profile.unionLevel],
   );
 
-  // Автоматический расчёт уровня и XP от реальных показателей (без ручной накрутки)
   const computedLevelData = useMemo(() => {
     const doneAchievements = achievements.filter((a) => a.done).length;
+    const pulledCharsCount = Object.keys(pullChains).length;
     const totalXp =
       profile.unionLevel * 120 +
       collected.length * 150 +
-      profile.roster.length * 350 +
+      pulledCharsCount * 350 +
       custom.favoriteCharIds.length * 180 +
       doneAchievements * 500 +
       custom.hoursSpent * 25;
@@ -1023,7 +1036,7 @@ export const ProfilePage = () => {
     achievements,
     profile.unionLevel,
     collected.length,
-    profile.roster.length,
+    pullChains,
     custom.favoriteCharIds.length,
     custom.hoursSpent,
   ]);
@@ -1093,7 +1106,6 @@ export const ProfilePage = () => {
 
   return (
     <div className="space-y-6 pb-10 w-full">
-      {/* Расширяем контейнер страницы профиля до 1540px, чтобы убрать лишнюю пустоту по бокам */}
       <style>{`
         main > div {
           max-width: 1540px !important;
@@ -1162,7 +1174,6 @@ export const ProfilePage = () => {
 
         <div className="relative z-10 -mt-28 sm:-mt-32 px-6 sm:px-10 pb-7">
           <div className="flex flex-col md:flex-row gap-7 items-start">
-            {/* Аватар с новой векторной рамкой */}
             <div className="relative group mx-auto md:mx-0">
               <FramedAvatar
                 src={custom.avatarUrl}
@@ -1183,7 +1194,6 @@ export const ProfilePage = () => {
               )}
             </div>
 
-            {/* Основная информация */}
             <div className="flex-1 min-w-0 w-full text-center md:text-left">
               <div className="flex flex-col md:flex-row md:items-baseline gap-1 md:gap-3">
                 <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow">
@@ -1194,7 +1204,7 @@ export const ProfilePage = () => {
                 </span>
               </div>
 
-              {/* Ряд бейджей: Титул WuWa + Коллекция + UID (без SOLARIS PASS) */}
+              {/* Ряд бейджей: Титул WuWa + Коллекция из круток + Бейдж удачи + UID */}
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-2.5 mt-3">
                 <button
                   type="button"
@@ -1210,16 +1220,30 @@ export const ProfilePage = () => {
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.06] border border-white/10 text-xs font-semibold text-gray-200">
                   <Sparkles size={12} className="text-accent-light" />
                   <span>
-                    {profile.roster.length}/{CHARACTERS.length}
+                    {Object.keys(pullChains).length || profile.roster.length}/{CHARACTERS.length}
                   </span>
                 </span>
+
+                {luckSummary && luckSummary.totalPulls > 0 && (
+                  <Link
+                    to="/pulls"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/35 text-xs font-bold text-amber-200 hover:border-amber-300 transition-colors"
+                    title="Статистика из Pull Tracker"
+                  >
+                    <Dice5 size={12} className="text-amber-300" />
+                    <span>
+                      Удача {luckSummary.luckGrade}
+                      {luckSummary.winRate5050 !== null ? ` · 50/50: ${luckSummary.winRate5050}%` : ''}
+                    </span>
+                  </Link>
+                )}
 
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.06] border border-white/10 text-xs font-mono text-gray-300">
                   UID: {profile.uid} · UL {profile.unionLevel}
                 </span>
               </div>
 
-              {/* Фактический статус онлайна + фактическая дата регистрации */}
+              {/* Статус онлайна + фактическая дата регистрации */}
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-3 gap-y-1 mt-3 text-xs">
                 <span
                   className={`inline-flex items-center gap-2 font-semibold ${
@@ -1244,7 +1268,6 @@ export const ProfilePage = () => {
                 </span>
               </div>
 
-              {/* Описание профиля (без декоративного HEX-кода) */}
               {bioLines.length > 0 && (
                 <div className="mt-4 space-y-1 text-xs sm:text-[13px] text-gray-200/95 font-medium leading-relaxed max-w-3xl">
                   {bioLines.map((line, idx) => (
@@ -1257,7 +1280,6 @@ export const ProfilePage = () => {
             </div>
           </div>
 
-          {/* Кнопки действий */}
           {!viewAsVisitor && (
             <div className="flex flex-wrap items-center justify-center md:justify-end gap-2.5 mt-6 pt-4 border-t border-white/[0.07]">
               <button
@@ -1312,7 +1334,7 @@ export const ProfilePage = () => {
       {/* ==================== НИЖНЯЯ СЕТКА: КОНТЕНТ СЛЕВА + МЕНЮ СПРАВА ==================== */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr,270px] gap-6 items-start">
         <div className="space-y-5 min-w-0">
-          {/* КАРТОЧКА УРОВНЯ ПРОФИЛЯ (автоматический расчёт) */}
+          {/* КАРТОЧКА УРОВНЯ ПРОФИЛЯ */}
           <div className="relative overflow-hidden rounded-2xl p-5 sm:p-6 bg-gradient-to-r from-[#261214]/90 via-[#141218]/95 to-[#121216]/95 border border-rose-500/25 shadow-[0_15px_45px_rgba(0,0,0,0.65)]">
             <div
               aria-hidden="true"
@@ -1405,7 +1427,7 @@ export const ProfilePage = () => {
             </div>
           </div>
 
-          {/* ДОПОЛНИТЕЛЬНЫЕ ВКЛАДКИ (Витрина / Любимое / Достижения) */}
+          {/* ВКЛАДКИ: Витрина с авто-бейджами созвездий S0–S6 / Достижения */}
           <AnimatePresence mode="wait">
             {activeSection !== 'main' && (
               <motion.div
@@ -1417,19 +1439,29 @@ export const ProfilePage = () => {
               >
                 {(activeSection === 'showcase' || activeSection === 'favorites') && (
                   <div className="glass-panel p-5 sm:p-6 space-y-5">
-                    <div>
-                      <h2 className="text-xl font-bold text-white">
-                        Любимые резонаторы ({custom.favoriteCharIds.length})
-                      </h2>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        Отметь сердечком любимых персонажей для своей витрины
-                      </p>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-xl font-bold text-white">
+                          Витрина резонаторов ({custom.favoriteCharIds.length})
+                        </h2>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Созвездия <strong className="text-amber-300">S0–S6</strong> подтягиваются на карточки автоматически из твоих круток в Pull Tracker
+                        </p>
+                      </div>
+                      <Link
+                        to="/pulls"
+                        className="text-xs font-bold text-accent-light hover:underline flex items-center gap-1.5"
+                      >
+                        <Dice5 size={14} />
+                        <span>Обновить из круток</span>
+                      </Link>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
                       {custom.favoriteCharIds.map((cid) => {
                         const char = getCharacterById(cid);
                         if (!char) return null;
+                        const chain = pullChains[char.id];
                         return (
                           <div
                             key={cid}
@@ -1449,6 +1481,23 @@ export const ProfilePage = () => {
                                 </p>
                               </div>
                             </Link>
+
+                            {/* Золотой бейдж созвездия S0–S6 из истории круток */}
+                            <span
+                              title={
+                                typeof chain === 'number'
+                                  ? `Резонансная цепь S${chain} (по данным круток)`
+                                  : 'Базовый S0'
+                              }
+                              className={`absolute top-2 left-2 px-2 py-0.5 rounded-lg text-[11px] font-black tracking-wider border backdrop-blur-md ${
+                                typeof chain === 'number' && chain > 0
+                                  ? 'bg-amber-500/85 text-[#09090b] border-amber-200 shadow-[0_0_12px_rgba(251,191,36,0.7)]'
+                                  : 'bg-black/65 text-amber-200 border-amber-400/40'
+                              }`}
+                            >
+                              S{typeof chain === 'number' ? chain : 0}
+                            </span>
+
                             {!viewAsVisitor && (
                               <button
                                 type="button"
@@ -1472,6 +1521,7 @@ export const ProfilePage = () => {
                         <div className="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto p-1">
                           {CHARACTERS.map((c) => {
                             const fav = custom.favoriteCharIds.includes(c.id);
+                            const chChain = pullChains[c.id];
                             return (
                               <button
                                 key={c.id}
@@ -1485,6 +1535,11 @@ export const ProfilePage = () => {
                               >
                                 <Heart size={11} fill={fav ? 'currentColor' : 'none'} />
                                 <span>{c.name}</span>
+                                {typeof chChain === 'number' && (
+                                  <span className="text-[10px] text-amber-300 font-black">
+                                    S{chChain}
+                                  </span>
+                                )}
                               </button>
                             );
                           })}
@@ -1847,7 +1902,7 @@ export const ProfilePage = () => {
         )}
       </AnimatePresence>
 
-      {/* ==================== МОДАЛКА «НАСТРОЙКИ» (без фейковых дат, статусов и уровней) ==================== */}
+      {/* ==================== МОДАЛКА «НАСТРОЙКИ» ==================== */}
       <AnimatePresence>
         {settingsModalOpen && (
           <div
