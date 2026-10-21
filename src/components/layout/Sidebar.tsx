@@ -1,38 +1,88 @@
-// Плавающий стеклянный сайдбар: сворачивание в рельсу, выход через контекст auth,
-// пункт «Админка» только для роли admin
-import { NavLink, useNavigate, Link } from 'react-router-dom';
+// Плавающий стеклянный сайдбар Stellar Wiki:
+// Группировка разделов, живые бейджи прогресса, мини-плеер Соларис-3 с таймером сброса
+// и карточка профиля с синхронизацией аватара, шапки и титула
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  House, Users, Map, Trophy, Newspaper, BookOpen, Settings as SettingsIcon,
-  Search, LogOut, Calculator, Dice5, Skull, ShieldCheck, Compass,
+  Compass,
+  House,
+  Users,
+  Skull,
+  Archive,
+  Dice5,
+  Map,
+  Trophy,
+  Calculator,
+  Newspaper,
+  BookOpen,
+  Settings as SettingsIcon,
+  Search,
+  LogOut,
+  ShieldCheck,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  Clock,
 } from 'lucide-react';
 import { NAV_ITEMS } from '../../utils/constants';
+import { CHARACTERS } from '../../data/characters';
+import { MAP_MARKERS } from '../../data/map';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { PlayerProfile } from '../../data/types';
 import { useAuth } from '../../hooks/useAuth';
+import { getCachedLuckSummary } from '../../utils/pullMatch';
 
 const ICONS: Record<string, any> = {
   home: House,
   users: Users,
+  bestiary: Skull,
+  archive: Archive,
+  dice: Dice5,
   map: Map,
   trophy: Trophy,
+  calculator: Calculator,
   news: Newspaper,
   guides: BookOpen,
   settings: SettingsIcon,
-  calculator: Calculator,
-  dice: Dice5,
-  bestiary: Skull,
 };
 
 const DEFAULT_PROFILE: PlayerProfile = {
-  uid: '100000000',
-  nickname: 'Rover',
-  unionLevel: 60,
+  uid: '700134928',
+  nickname: 'HaradaAkira',
+  unionLevel: 80,
   signature: '',
   roster: [],
 };
 
-const SPRING = { type: 'spring', bounce: 0.22, duration: 0.5 } as const;
+// Группы разделов для аккуратной структуры меню
+const GROUP_MAP: Record<string, 'db' | 'tools' | 'system'> = {
+  home: 'db',
+  characters: 'db',
+  bestiary: 'db',
+  meta: 'db',
+  pulls: 'tools',
+  map: 'tools',
+  calculator: 'tools',
+  guides: 'system',
+  news: 'system',
+  settings: 'system',
+};
+
+const SPRING = { type: 'spring' as const, bounce: 0.2, duration: 0.5 };
+
+/* Таймер до ежедневного сброса сервера (04:00) */
+function getShortResetTimer(): string {
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(4, 0, 0, 0);
+  if (now >= target) target.setDate(target.getDate() + 1);
+  const diff = Math.max(0, target.getTime() - now.getTime());
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  return `${String(h).padStart(2, '0')}ч ${String(m).padStart(2, '0')}м`;
+}
 
 interface Props {
   onOpenSearch: () => void;
@@ -40,92 +90,316 @@ interface Props {
 }
 
 export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
-  const [profile] = useLocalStorage<PlayerProfile>('ww_profile', DEFAULT_PROFILE);
-  const { user, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
+  const [profile] = useLocalStorage<PlayerProfile>('ww_profile', DEFAULT_PROFILE);
+  const [collected] = useLocalStorage<string[]>('ww_map_collected', []);
+
+  // Читаем кастомизацию профиля (аватарку и шапку), чтобы сайдбар обновлялся синхронно со страницей /profile
+  const [customData, setCustomData] = useState<{
+    avatarUrl?: string;
+    bannerUrl?: string;
+    username?: string;
+  }>({});
+
+  useEffect(() => {
+    try {
+      const rawV2 = localStorage.getItem('ww_profile_custom_v2');
+      const rawV1 = localStorage.getItem('ww_profile_custom_v1');
+      const parsed = JSON.parse(rawV2 || rawV1 || '{}');
+      setCustomData(parsed);
+    } catch {
+      setCustomData({});
+    }
+  }, [location.pathname]);
+
+  // Живые метрики для бейджей меню
+  const luckSummary = useMemo(() => getCachedLuckSummary(), [location.pathname]);
+  const mapPercent = useMemo(
+    () => Math.round((collected.length / Math.max(1, MAP_MARKERS.length)) * 100),
+    [collected],
+  );
+
+  // Таймер сброса серверов
+  const [resetTime, setResetTime] = useState(() => getShortResetTimer());
+  useEffect(() => {
+    const id = setInterval(() => setResetTime(getShortResetTimer()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Встроенный фоновый мини-плеер Соларис-3
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [volume, setVolume] = useState<number>(() => {
+    const saved = localStorage.getItem('ww_sidebar_vol');
+    return saved !== null ? Number(saved) : 0.15;
+  });
+
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    el.volume = muted ? 0 : volume;
+    el.muted = muted;
+    localStorage.setItem('ww_sidebar_vol', String(volume));
+  }, [volume, muted]);
+
+  const toggleMusic = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (!el.paused) {
+      el.pause();
+    } else {
+      el.volume = muted ? 0 : volume;
+      el.play().catch(() => {});
+    }
+  };
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
-  const displayName = user?.nickname || profile.nickname || 'Rover';
+  // Формируем список навигации (гарантируем наличие Бестиария, даже если его нет в константе)
+  const fullNavItems = useMemo(() => {
+    const hasBestiary = NAV_ITEMS.some((i) => i.path === '/bestiary' || i.id === 'bestiary');
+    if (hasBestiary) return NAV_ITEMS;
+    const copy = [...NAV_ITEMS];
+    const charIdx = copy.findIndex((i) => i.id === 'characters');
+    copy.splice(charIdx + 1, 0, {
+      id: 'bestiary',
+      label: 'Бестиарий',
+      icon: 'bestiary',
+      path: '/bestiary',
+    });
+    return copy;
+  }, []);
+
+  const getBadgeForItem = (id: string): { text: string; highlight?: boolean } | null => {
+    switch (id) {
+      case 'characters':
+        return { text: String(CHARACTERS.length), highlight: true };
+      case 'pulls':
+        return luckSummary?.luckGrade && luckSummary.luckGrade !== '—'
+          ? { text: luckSummary.luckGrade, highlight: true }
+          : { text: '50/50' };
+      case 'map':
+        return { text: `${mapPercent}%` };
+      case 'meta':
+        return { text: 'S-TIER' };
+      case 'calculator':
+        return { text: 'ECHO' };
+      default:
+        return null;
+    }
+  };
+
+  const groups = useMemo(() => {
+    const db = fullNavItems.filter((i) => (GROUP_MAP[i.id] ?? 'system') === 'db');
+    const tools = fullNavItems.filter((i) => GROUP_MAP[i.id] === 'tools');
+    const sys = fullNavItems.filter((i) => (GROUP_MAP[i.id] ?? 'system') === 'system');
+    return [
+      { key: 'db', title: 'ЭНЦИКЛОПЕДИЯ', items: db },
+      { key: 'tools', title: 'ТЕРМИНАЛЫ', items: tools },
+      { key: 'system', title: 'СИСТЕМА', items: sys },
+    ];
+  }, [fullNavItems]);
+
+  const displayName = profile.nickname || user?.nickname || 'Rover';
+  const avatarSrc = customData.avatarUrl || '/images/Camellya_Card.webp';
 
   return (
     <aside
-      className={`hidden md:flex flex-col fixed left-4 top-4 bottom-4 rounded-2xl border border-glass-border bg-bg-secondary/75 backdrop-blur-2xl shadow-glass z-40 overflow-hidden transition-[width] duration-300 ease-in-out solaris-crest ${
+      className={`hidden md:flex flex-col fixed left-4 top-4 bottom-4 rounded-[26px] border border-white/12 bg-[#0b0d14]/75 backdrop-blur-2xl z-40 overflow-hidden transition-[width] duration-300 ease-in-out solaris-crest ${
         collapsed ? 'w-20' : 'w-64'
       }`}
     >
-      {/* Брендовая шапка */}
+      {/* Фоновое аудио для мини-плеера сайдбара */}
+      <audio
+        ref={audioRef}
+        src="/login-bgm.mp3"
+        loop
+        preload="none"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+      />
+
+      {/* Декоративное верхнее свечение */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-20 -left-10 w-48 h-48 rounded-full bg-accent/15 blur-3xl"
+      />
+
+      {/* 1. ШАПКА САЙДБАРА С АНИМИРОВАННЫМ КОМПАСОМ СОЛАРИС-3 */}
       <Link
         to="/home"
-        className={`px-4 lg:px-5 pt-5 pb-4 border-b border-glass-border focus-ring flex items-center overflow-hidden group ${
-          collapsed ? 'justify-center' : 'justify-start gap-3'
+        className={`relative z-10 pt-5 pb-4 border-b border-white/[0.08] focus-ring flex items-center transition-all ${
+          collapsed ? 'px-3 justify-center' : 'px-5 gap-3.5 justify-start'
         }`}
       >
-        <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent/30 via-accent/15 to-transparent border border-accent/40 flex items-center justify-center text-accent-light shadow-glow-sm shrink-0 group-hover:scale-105 transition-transform">
-          <Compass size={18} />
-        </span>
-        <div
-          className={`min-w-0 whitespace-nowrap transition-all duration-200 ${
-            collapsed ? 'w-0 opacity-0 overflow-hidden' : 'opacity-100 delay-100'
-          }`}
-        >
-          <span className="block text-lg font-extrabold text-gradient tracking-tight leading-none">
-            Stellar Wiki
-          </span>
-          <span className="block text-[10px] uppercase tracking-[0.22em] text-gray-500 mt-1">
-            Solaris-3 Archive
-          </span>
+        <div className="relative w-10 h-10 rounded-2xl bg-gradient-to-br from-[#261f18] to-[#12100e] border border-accent/40 flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(202,160,125,0.2)] group">
+          {/* Тонкое вращающееся кольцо вокруг логотипа */}
+          <svg
+            viewBox="0 0 44 44"
+            className="absolute inset-0 w-full h-full animate-[spin_26s_linear_infinite] opacity-65 pointer-events-none"
+          >
+            <circle
+              cx="22"
+              cy="22"
+              r="19"
+              fill="none"
+              stroke="rgb(var(--accent-light))"
+              strokeWidth="1"
+              strokeDasharray="6 4"
+            />
+          </svg>
+          <Compass size={19} className="text-accent-light relative z-10" />
         </div>
+
+        {!collapsed && (
+          <div className="min-w-0 overflow-hidden">
+            <span className="block text-lg font-extrabold text-gradient tracking-tight leading-none truncate">
+              Stellar Wiki
+            </span>
+            <span className="block text-[9px] font-bold tracking-[0.24em] text-gray-400 uppercase mt-1.5 truncate">
+              SOLARIS-3 ARCHIVE
+            </span>
+          </div>
+        )}
       </Link>
 
-      {/* Кнопка глобального поиска */}
+      {/* 2. КНОПКА ГЛОБАЛЬНОГО ПОИСКА (CTRL + K) */}
       <button
         onClick={onOpenSearch}
-        className={`mx-3 lg:mx-4 mt-4 flex items-center px-3 lg:px-3.5 py-2.5 rounded-xl bg-bg/60 border border-glass-border text-gray-400 hover:text-ivory hover:border-accent/50 hover:shadow-glow-sm transition-all focus-ring ${
-          collapsed ? 'justify-center' : 'justify-start'
+        className={`relative z-10 mx-3.5 mt-3.5 flex items-center rounded-2xl bg-white/[0.035] hover:bg-white/[0.07] border border-white/10 hover:border-accent/45 text-gray-300 hover:text-ivory transition-all focus-ring group ${
+          collapsed ? 'p-2.5 justify-center' : 'px-3.5 py-2.5 justify-between'
         }`}
         aria-label="Открыть поиск (Ctrl+K)"
+        title="Поиск по базе (Ctrl+K)"
       >
-        <Search size={17} className="shrink-0 text-accent-light/80" />
-        {!collapsed && (
-          <>
-            <span className="flex-1 text-left text-xs font-medium ml-2.5 whitespace-nowrap">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Search
+            size={16}
+            className="text-accent-light shrink-0 group-hover:scale-110 transition-transform"
+          />
+          {!collapsed && (
+            <span className="text-xs font-medium text-gray-400 group-hover:text-gray-200 truncate">
               Поиск по базе...
             </span>
-            <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-bg-secondary border border-glass-border rounded text-gray-400 whitespace-nowrap">
-              Ctrl K
-            </kbd>
-          </>
+          )}
+        </div>
+        {!collapsed && (
+          <kbd className="px-2 py-0.5 text-[10px] font-mono font-semibold bg-black/50 border border-white/12 rounded-md text-gray-400 shrink-0">
+            Ctrl K
+          </kbd>
         )}
       </button>
 
-      <p
-        className={`pt-4 pb-1.5 text-[10px] font-semibold tracking-[0.24em] text-gray-500 transition-all duration-200 ${
-          collapsed ? 'text-center px-1' : 'px-6 text-left'
-        }`}
-      >
-        НАВИГАЦИЯ
-      </p>
+      {/* 3. КАТЕГОРИЗИРОВАННОЕ МЕНЮ НАВИГАЦИИ С БЕЙДЖАМИ */}
+      <nav className="relative z-10 flex-1 px-3 py-3 space-y-4 overflow-y-auto no-scrollbar overflow-x-hidden">
+        {groups.map((group) => (
+          <div key={group.key} className="space-y-1">
+            {!collapsed ? (
+              <div className="px-3 pb-1 flex items-center gap-2">
+                <span className="text-[9px] font-extrabold tracking-[0.22em] text-gray-500 uppercase">
+                  {group.title}
+                </span>
+                <span className="flex-1 h-[1px] bg-gradient-to-r from-white/[0.07] to-transparent" />
+              </div>
+            ) : (
+              <div className="mx-3 my-1 h-[1px] bg-white/[0.07]" />
+            )}
 
-      {/* Список разделов */}
-      <nav className="flex-1 px-3 lg:px-3.5 space-y-1 overflow-y-auto no-scrollbar overflow-x-hidden">
-        {NAV_ITEMS.map((item) => {
-          const Icon = ICONS[item.icon] ?? House;
-          return (
+            {group.items.map((item) => {
+              const Icon =
+                item.id === 'bestiary'
+                  ? Skull
+                  : ICONS[item.icon] ?? House;
+              const badge = getBadgeForItem(item.id);
+
+              return (
+                <NavLink
+                  key={item.id}
+                  to={item.path}
+                  title={item.label}
+                  className={({ isActive }) =>
+                    `group relative flex items-center rounded-xl transition-all duration-200 focus-ring ${
+                      collapsed ? 'justify-center py-2.5 px-2' : 'justify-between px-3 py-2'
+                    } ${
+                      isActive
+                        ? 'text-ivory'
+                        : 'text-gray-400 hover:text-ivory hover:bg-white/[0.04]'
+                    }`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && (
+                        <motion.span
+                          layoutId="nav-pill"
+                          className="absolute inset-0 rounded-xl bg-gradient-to-r from-accent/25 via-accent/12 to-transparent border border-accent/40 shadow-[0_0_20px_rgba(202,160,125,0.18)]"
+                          transition={SPRING}
+                        />
+                      )}
+
+                      {/* Левая золотая риска активного пункта */}
+                      {isActive && (
+                        <motion.span
+                          layoutId="nav-bar"
+                          className="absolute left-1 top-2 bottom-2 w-1 rounded-full bg-gradient-to-b from-ivory to-accent shadow-[0_0_8px_rgba(247,236,230,0.9)]"
+                          transition={SPRING}
+                        />
+                      )}
+
+                      <div className="relative z-10 flex items-center gap-3 min-w-0">
+                        <span
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                            isActive
+                              ? 'bg-accent/25 text-accent-light border border-accent/40'
+                              : 'bg-white/[0.03] text-gray-400 group-hover:text-ivory group-hover:bg-white/[0.07] border border-white/[0.06]'
+                          }`}
+                        >
+                          <Icon size={15} />
+                        </span>
+
+                        {!collapsed && (
+                          <span className="text-[13px] font-semibold truncate">{item.label}</span>
+                        )}
+                      </div>
+
+                      {!collapsed && badge && (
+                        <span
+                          className={`relative z-10 px-1.5 py-0.5 rounded-md text-[10px] font-extrabold tracking-wider tabular-nums shrink-0 ${
+                            isActive || badge.highlight
+                              ? 'bg-accent/20 text-accent-light border border-accent/35'
+                              : 'bg-white/[0.05] text-gray-400 border border-white/[0.08]'
+                          }`}
+                        >
+                          {badge.text}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </NavLink>
+              );
+            })}
+          </div>
+        ))}
+
+        {/* Пункт «Админка» (только для роли admin) */}
+        {user?.role === 'admin' && (
+          <div className="pt-1">
             <NavLink
-              key={item.id}
-              to={item.path}
-              title={item.label}
+              to="/admin"
+              title="Админка"
               className={({ isActive }) =>
-                `relative flex items-center px-3 lg:px-3.5 py-2.5 rounded-xl transition-colors duration-200 focus-ring group ${
-                  collapsed ? 'justify-center' : 'justify-start'
+                `group relative flex items-center rounded-xl transition-all duration-200 focus-ring ${
+                  collapsed ? 'justify-center py-2.5 px-2' : 'justify-between px-3 py-2'
                 } ${
                   isActive
-                    ? 'text-ivory'
-                    : 'text-gray-400 hover:text-ivory hover:bg-glass-hover'
+                    ? 'text-amber-200'
+                    : 'text-amber-300/80 hover:text-amber-200 hover:bg-amber-500/10'
                 }`
               }
             >
@@ -134,106 +408,194 @@ export const Sidebar = ({ onOpenSearch, collapsed }: Props) => {
                   {isActive && (
                     <motion.span
                       layoutId="nav-pill"
-                      className="absolute inset-0 rounded-xl bg-gradient-to-r from-accent/20 via-accent/10 to-transparent border border-accent/35 shadow-glow-sm"
+                      className="absolute inset-0 rounded-xl bg-gradient-to-r from-amber-500/25 via-amber-500/10 to-transparent border border-amber-400/45 shadow-[0_0_20px_rgba(251,191,36,0.2)]"
                       transition={SPRING}
                     />
                   )}
-                  {isActive && (
-                    <span className="absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-accent-light shadow-glow-sm" />
+                  <div className="relative z-10 flex items-center gap-3 min-w-0">
+                    <span className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300 flex items-center justify-center shrink-0">
+                      <ShieldCheck size={15} />
+                    </span>
+                    {!collapsed && (
+                      <span className="text-[13px] font-bold truncate">Админка</span>
+                    )}
+                  </div>
+                  {!collapsed && (
+                    <span className="relative z-10 px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/40 text-[9px] font-black uppercase tracking-wider text-amber-200">
+                      ROOT
+                    </span>
                   )}
-                  <Icon
-                    size={19}
-                    className={`relative z-10 shrink-0 transition-colors ${
-                      isActive ? 'text-accent-light' : 'group-hover:text-accent-light/80'
-                    }`}
-                  />
-                  <span
-                    className={`relative z-10 text-sm font-medium whitespace-nowrap transition-all duration-200 ${
-                      collapsed ? 'w-0 ml-0 opacity-0 overflow-hidden' : 'ml-3 opacity-100 delay-100'
-                    }`}
-                  >
-                    {item.label}
-                  </span>
                 </>
               )}
             </NavLink>
-          );
-        })}
-
-        {user?.role === 'admin' && (
-          <NavLink
-            to="/admin"
-            title="Админка"
-            className={({ isActive }) =>
-              `relative flex items-center px-3 lg:px-3.5 py-2.5 rounded-xl transition-colors duration-200 focus-ring group ${
-                collapsed ? 'justify-center' : 'justify-start'
-              } ${
-                isActive ? 'text-ivory' : 'text-amber-300/80 hover:text-ivory hover:bg-glass-hover'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                {isActive && (
-                  <motion.span
-                    layoutId="nav-pill"
-                    className="absolute inset-0 rounded-xl bg-gradient-to-r from-accent/20 via-accent/10 to-transparent border border-accent/35 shadow-glow-sm"
-                    transition={SPRING}
-                  />
-                )}
-                <ShieldCheck size={19} className="relative z-10 shrink-0 text-accent-light" />
-                <span
-                  className={`relative z-10 text-sm font-medium whitespace-nowrap transition-all duration-200 ${
-                    collapsed ? 'w-0 ml-0 opacity-0 overflow-hidden' : 'ml-3 opacity-100 delay-100'
-                  }`}
-                >
-                  Админка
-                </span>
-              </>
-            )}
-          </NavLink>
+          </div>
         )}
       </nav>
 
-      {/* Карточка профиля внизу */}
+      {/* 4. МИНИ-ДОК: ФОНОВОЕ РАДИО СОЛАРИС-3 + ТАЙМЕР СБРОСА ДЕЙЛИКОВ */}
+      {!collapsed ? (
+        <div className="relative z-10 mx-3.5 mb-2.5 p-2.5 rounded-2xl bg-black/45 border border-white/10 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={toggleMusic}
+              className="flex items-center gap-2 text-left group min-w-0 flex-1 focus-ring rounded-lg"
+              title={playing ? 'Поставить музыку на паузу' : 'Включить фоновую музыку Соларис-3'}
+            >
+              <span
+                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border transition-colors ${
+                  playing
+                    ? 'bg-accent/25 border-accent text-accent-light'
+                    : 'bg-white/[0.06] border-white/10 text-gray-300 group-hover:text-white'
+                }`}
+              >
+                {playing ? <Pause size={13} /> : <Play size={13} className="translate-x-[0.5px]" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-ivory truncate">
+                    Solaris-3 Radio
+                  </span>
+                  {playing && (
+                    <span className="flex items-end gap-0.5 h-2.5 shrink-0">
+                      <span className="w-0.5 h-2 bg-accent-light animate-pulse" />
+                      <span className="w-0.5 h-2.5 bg-accent animate-bounce" />
+                      <span className="w-0.5 h-1.5 bg-accent-light animate-pulse" />
+                    </span>
+                  )}
+                </div>
+                <span className="block text-[9px] text-gray-500 truncate">
+                  {playing ? 'Звучит фоновая тема' : 'Нажми для запуска BGM'}
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMuted((m) => !m)}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-ivory hover:bg-white/10 transition-colors"
+              title={muted ? 'Включить звук' : 'Выключить звук'}
+            >
+              {muted || volume === 0 ? <VolumeX size={13} /> : <Volume2 size={13} />}
+            </button>
+          </div>
+
+          {/* Ползунок громкости (показывается, когда играет музыка) */}
+          {playing && (
+            <input
+              type="range"
+              min={0}
+              max={0.6}
+              step={0.01}
+              value={muted ? 0 : volume}
+              onChange={(e) => {
+                setVolume(parseFloat(e.target.value));
+                if (muted) setMuted(false);
+              }}
+              aria-label="Громкость радио"
+              className="w-full h-1"
+            />
+          )}
+
+          {/* Строка таймера до сброса сервера */}
+          <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1.5 border-t border-white/[0.06]">
+            <span className="flex items-center gap-1">
+              <Clock size={11} className="text-accent-light" />
+              <span>Сброс сервера:</span>
+            </span>
+            <span className="font-mono font-bold text-accent-light tabular-nums">{resetTime}</span>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={toggleMusic}
+          title={playing ? 'Пауза BGM' : 'Включить BGM Соларис-3'}
+          className={`mx-auto mb-2.5 w-10 h-10 rounded-xl border flex items-center justify-center transition-colors ${
+            playing
+              ? 'bg-accent/25 border-accent text-accent-light'
+              : 'bg-white/[0.04] border-white/10 text-gray-400 hover:text-white'
+          }`}
+        >
+          {playing ? <Pause size={15} /> : <Play size={15} />}
+        </button>
+      )}
+
+      {/* 5. НИЖНЯЯ КАРТОЧКА ПРОФИЛЯ С ФОНОВЫМ БАННЕРОМ И КАСТОМНОЙ АВАТАРКОЙ */}
       <div
-        className={`mx-3 lg:mx-3.5 mb-3.5 mt-2 flex items-center rounded-xl border border-glass-border bg-bg/60 overflow-hidden ${
-          collapsed ? 'justify-center' : ''
+        className={`relative z-10 mx-3.5 mb-3.5 rounded-2xl border border-white/15 overflow-hidden bg-[#12131c] shadow-lg ${
+          collapsed ? 'flex justify-center' : ''
         }`}
       >
-        <NavLink
-          to="/profile"
-          className={`flex-1 flex items-center p-2.5 hover:bg-glass-hover transition-colors focus-ring min-w-0 ${
-            collapsed ? 'justify-center' : 'justify-start'
-          }`}
-          aria-label="Открыть профиль"
-        >
-          <span className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent-light to-accent text-bg font-extrabold flex items-center justify-center shrink-0 shadow-glow-sm">
-            {displayName.charAt(0).toUpperCase()}
-          </span>
-          <span
-            className={`flex-1 min-w-0 whitespace-nowrap transition-all duration-200 ${
-              collapsed ? 'w-0 opacity-0 overflow-hidden' : 'ml-2.5 opacity-100 delay-100'
-            }`}
-          >
-            <span className="block text-sm font-semibold text-ivory truncate leading-tight">
-              {displayName}
-            </span>
-            <span className="block text-[10px] uppercase tracking-wider text-accent-light/80 mt-0.5">
-              UL {profile.unionLevel} · Резонатор
-            </span>
-          </span>
-        </NavLink>
-        {!collapsed && (
-          <button
-            onClick={handleLogout}
-            className="p-2.5 text-gray-500 hover:text-red-300 hover:bg-red-500/10 transition-colors focus-ring shrink-0"
-            aria-label="Выйти из аккаунта"
-            title="Выйти"
-          >
-            <LogOut size={16} />
-          </button>
+        {/* Фоновая шапка пользователя из профиля */}
+        {customData.bannerUrl && !collapsed && (
+          <img
+            src={customData.bannerUrl}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 w-full h-full object-cover opacity-30 pointer-events-none"
+          />
         )}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-gradient-to-r from-[#0b0d14]/90 via-[#0b0d14]/75 to-[#0b0d14]/90 pointer-events-none"
+        />
+
+        <div className="relative z-10 flex items-center">
+          <NavLink
+            to="/profile"
+            className={`flex-1 flex items-center p-2.5 hover:bg-white/[0.05] transition-colors focus-ring min-w-0 ${
+              collapsed ? 'justify-center' : 'justify-start gap-3'
+            }`}
+            aria-label="Открыть профиль"
+            title="Открыть профиль Ровера"
+          >
+            {/* Аватарка с индикатором «В сети» */}
+            <div className="relative shrink-0">
+              <div className="w-10 h-10 rounded-xl overflow-hidden border border-accent/60 bg-gradient-to-br from-accent-light to-accent flex items-center justify-center shadow-glow-sm">
+                {avatarSrc ? (
+                  <img
+                    src={avatarSrc}
+                    alt={displayName}
+                    className="w-full h-full object-cover object-top"
+                  />
+                ) : (
+                  <span className="text-bg font-black text-base">
+                    {displayName.charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <span
+                title="В сети"
+                className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-purple-400 border-2 border-[#0b0d14] shadow-[0_0_8px_#c084fc]"
+              />
+            </div>
+
+            {!collapsed && (
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="block text-sm font-extrabold text-white truncate">
+                    {displayName}
+                  </span>
+                </div>
+                <span className="block text-[10px] font-bold tracking-wider uppercase text-accent-light truncate">
+                  UL {profile.unionLevel} · РЕЗОНАТОР
+                </span>
+              </div>
+            )}
+          </NavLink>
+
+          {!collapsed && (
+            <button
+              onClick={handleLogout}
+              className="p-3 text-gray-400 hover:text-rose-300 hover:bg-rose-500/15 transition-colors focus-ring shrink-0"
+              aria-label="Выйти из аккаунта"
+              title="Выйти"
+            >
+              <LogOut size={16} />
+            </button>
+          )}
+        </div>
       </div>
     </aside>
   );
