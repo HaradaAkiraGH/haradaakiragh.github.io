@@ -1,97 +1,48 @@
-// Бестиарий: двухуровневая картотека (полки категорий + предметы).
-// Карточки компактные: имя, редкость, теги. Описание читается внутри:
-// у предмета — в модалке просмотра, у категории — в шапке полки.
-// Админ: создание/правка/удаление, перестановка свойств, ИМПОРТ ПАЧКОЙ из JSON (v2 с innerText).
+// Бестиарий Соларис-3 (Полный редизайн полок и карточек + встроенный каталог всех материалов до патча 3.7):
+// 1) Коллекционные обложки категорий с мини-витриной предметов и разбивкой по редкости
+// 2) Автоматическое слияние встроенной базы материалов (45+ наборов / все цепочки T1–T4) с серверной базой Supabase
+// 3) Фильтрация по подкатегориям материалов, редкости (2★–5★) и кнопка синхронизации в Supabase для админа
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Plus, Pencil, Trash2, Search, X, Archive, AlertCircle, Tag, RefreshCw,
-  Sword, Skull, Waves, Gem, UtensilsCrossed, Package, KeyRound, ArrowLeft,
-  ChevronUp, ChevronDown, Download, Terminal, Check, Sparkles,
+  Plus,
+  Pencil,
+  Trash2,
+  Search,
+  X,
+  Archive,
+  AlertCircle,
+  Tag,
+  RefreshCw,
+  ArrowLeft,
+  Sparkles,
+  Swords,
+  Skull,
+  Gem,
+  CloudUpload,
+  CheckCircle2,
+  Filter,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import {
-  apiGetBestiary, apiCreateBestiary, apiUpdateBestiary, apiDeleteBestiary,
-  apiCreateCategory, apiUpdateCategory, apiDeleteCategory,
-  BestiaryEntry, BestiaryCategory,
+  apiGetBestiary,
+  apiCreateBestiary,
+  apiUpdateBestiary,
+  apiDeleteBestiary,
+  BestiaryEntry,
 } from '../utils/api';
+import {
+  BUILTIN_MATERIALS,
+  getBuiltinMaterialsAsEntries,
+} from '../data/materialsCatalog';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
-/* ---------- Скрипт-скрейпер v2 для консоли DevTools на prydwen.gg ----------
-   Использует innerText (сохраняет пробелы между блоками) и выводит диагностику. */
-const SCRAPER_SCRIPT = String.raw`(function () {
-  var nodes = document.querySelectorAll('*');
-  var cand = [];
-  for (var i = 0; i < nodes.length; i++) {
-    var el = nodes[i];
-    var t = el.innerText || el.textContent || '';
-    if (t.indexOf('Rarity:') !== -1 && /Rarity:\s*[1-5]/.test(t) && el.querySelector('img')) cand.push(el);
-  }
-  var minimal = cand.filter(function (el) {
-    return !cand.some(function (o) { return o !== el && el.contains(o); });
-  });
-  var cards = [];
-  minimal.forEach(function (card) {
-    try {
-      var text = (card.innerText || card.textContent || '').replace(/\s+/g, ' ').trim();
-      var type = '';
-      var head = text.match(/^(.*?)\s*Rarity:\s*([1-5])\s*(?:★|\*)?\s*Type:\s*([A-Za-z]+)/);
-      if (head) { type = head[3]; }
-      else { head = text.match(/^(.*?)\s*Rarity:\s*([1-5])\s*(?:★|\*)?/); }
-      if (!head) return;
-      var rest = text.slice(head[0].length);
-      var atkIdx = rest.indexOf('ATK (Lv.90):');
-      var desc = (atkIdx !== -1 ? rest.slice(0, atkIdx) : rest).trim();
-      var atkM = rest.match(/ATK \(Lv\.90\):\s*([\d.]+%?)/);
-      var after = atkM ? rest.slice(rest.indexOf(atkM[0]) + atkM[0].length) : '';
-      var sub2 = after.match(/^\s*([A-Za-z][A-Za-z .%\/]*?)\(Lv\.90\):\s*([\d.]+%?)/);
-      var img = card.querySelector('img');
-      cards.push({
-        name: head[1],
-        rarity: Number(head[2]),
-        type: type,
-        description: desc,
-        atk: atkM ? atkM[1] : '',
-        substat: sub2 ? sub2[1].trim() + ' (Lv.90)' : '',
-        substatValue: sub2 ? sub2[2] : '',
-        image: img ? (img.currentSrc || img.src || img.getAttribute('data-src') || '') : ''
-      });
-    } catch (e) {}
-  });
-  if (cards.length === 0) {
-    var bodyText = document.body.innerText || document.body.textContent || '';
-    var idx = bodyText.indexOf('Rarity:');
-    console.log('Диагностика: карточек-кандидатов = ' + minimal.length + '; слово Rarity: на странице = ' + (idx !== -1));
-    console.log('Фрагмент текста вокруг первого Rarity:: ' + JSON.stringify(bodyText.slice(Math.max(0, idx - 100), idx + 150)));
-  } else {
-    console.table(cards.map(function (c) { return { name: c.name, rarity: c.rarity, type: c.type }; }));
-  }
-  copy(JSON.stringify(cards, null, 2));
-  console.log('Готово: ' + cards.length + ' записей скопировано в буфер обмена');
-})();`;
+interface PropRow {
+  k: string;
+  v: string;
+}
 
-const CATEGORY_ALIASES: { keys: string[]; icon: LucideIcon }[] = [
-  { keys: ['оружие', 'weapon', 'weapons', 'пушки'], icon: Sword },
-  { keys: ['враги', 'enemy', 'enemies', 'босс', 'боссы', 'boss', 'монстр', 'монстры'], icon: Skull },
-  { keys: ['эхо', 'echo', 'echoes'], icon: Waves },
-  { keys: ['материалы', 'material', 'ресурс', 'resource', 'камни'], icon: Gem },
-  { keys: ['еда', 'food', 'кулинария', 'блюд', 'рецепт'], icon: UtensilsCrossed },
-  { keys: ['предмет', 'item', 'расходник', 'инвентарь'], icon: Package },
-  { keys: ['ключ', 'key', 'ключи'], icon: KeyRound },
-];
-const categoryIcon = (cat: string): LucideIcon => {
-  const c = cat.toLowerCase();
-  for (const a of CATEGORY_ALIASES) {
-    if (a.keys.some((k) => c.includes(k))) return a.icon;
-  }
-  return Archive;
-};
-
-const PAGE_SIZE = 24;
-
-interface PropRow { k: string; v: string; }
-interface ItemForm {
+interface FormState {
   id: number | null;
   category: string;
   name: string;
@@ -101,15 +52,19 @@ interface ItemForm {
   tags: string;
   props: PropRow[];
 }
-interface CatForm {
-  id: number | null;
-  name: string;
-  image: string;
-  description: string;
-  sort: string;
-}
 
-const entryToForm = (e: BestiaryEntry): ItemForm => ({
+const EMPTY_FORM: FormState = {
+  id: null,
+  category: 'Материалы',
+  name: '',
+  rarity: '4',
+  description: '',
+  image: '',
+  tags: '',
+  props: [{ k: 'Источник', v: '' }],
+};
+
+const entryToForm = (e: BestiaryEntry): FormState => ({
   id: e.id,
   category: e.category,
   name: e.name,
@@ -119,788 +74,982 @@ const entryToForm = (e: BestiaryEntry): ItemForm => ({
   tags: e.tags,
   props: Object.entries(e.props ?? {}).map(([k, v]) => ({ k, v: String(v) })),
 });
-const catToForm = (c: BestiaryCategory): CatForm => ({
-  id: c.id,
-  name: c.name,
-  image: c.image ?? '',
-  description: c.description,
-  sort: String(c.sort ?? 0),
-});
 
-const SafeImage = ({ src, alt, className = '' }: { src: string | null; alt: string; className?: string }) => {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [src]);
-  if (src && !failed) {
-    return (
-      <img
-        src={src}
-        alt={alt}
-        loading="lazy"
-        decoding="async"
-        onError={() => setFailed(true)}
-        className={`object-cover ${className}`}
-        draggable={false}
-      />
-    );
+/* Курируемые обложки и описания для главных полок Бестиария (вместо растянутых одиночных иконок) */
+const CATEGORY_META: Record<
+  string,
+  {
+    subtitle: string;
+    bannerGrad: string;
+    borderGlow: string;
+    accentText: string;
+    icon: any;
+    coverArt: string;
   }
-  return null;
+> = {
+  Материалы: {
+    subtitle: 'Боссы вознесения, диковинки Соларис-3, еженедельные трофеи Форте, руда и ядра врагов (патч 3.7)',
+    bannerGrad: 'from-amber-500/25 via-[#1c1610] to-[#0a0b10]',
+    borderGlow: 'hover:border-amber-400/50',
+    accentText: 'text-amber-300',
+    icon: Gem,
+    coverArt:
+      'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=900&q=80',
+  },
+  Оружие: {
+    subtitle: 'Сигнатурные и альтернативные клинки, тяжёлые мечи, пистолеты, перчатки и резонаторы',
+    bannerGrad: 'from-rose-500/25 via-[#1f1018] to-[#0a0b10]',
+    borderGlow: 'hover:border-rose-400/50',
+    accentText: 'text-rose-300',
+    icon: Swords,
+    coverArt:
+      'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=900&q=80',
+  },
+  Эхо: {
+    subtitle: 'Поглощённые частоты Тасет-дискордов (Cost 4 / 3 / 1) и сонатные эффекты сетов',
+    bannerGrad: 'from-cyan-500/25 via-[#0e1b26] to-[#0a0b10]',
+    borderGlow: 'hover:border-cyan-400/50',
+    accentText: 'text-cyan-300',
+    icon: Sparkles,
+    coverArt:
+      'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=900&q=80',
+  },
+  Враги: {
+    subtitle: 'Мировые боссы, элитные Тасет-дискорды, Фрацидус и противники Голограмм',
+    bannerGrad: 'from-purple-500/25 via-[#191129] to-[#0a0b10]',
+    borderGlow: 'hover:border-purple-400/50',
+    accentText: 'text-purple-300',
+    icon: Skull,
+    coverArt:
+      'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=900&q=80',
+  },
 };
 
-const inputClass = 'w-full bg-bg-secondary border border-glass-border rounded-lg px-3 py-2 text-sm text-ivory focus-ring';
-const labelClass = 'block text-xs text-gray-400 mb-1.5';
-const sheetClass = 'fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center sm:p-4';
-const sheetPanel = 'glass-panel solaris-crest w-full max-w-2xl rounded-t-3xl sm:rounded-2xl p-5 sm:p-6 animate-slide-up max-h-[85vh] overflow-y-auto pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] sm:pb-6';
+const RARITY_SLOT_STYLE: Record<number, { bg: string; border: string; badge: string }> = {
+  5: {
+    bg: 'from-amber-500/25 via-amber-900/15 to-[#0b0d14]',
+    border: 'border-amber-400/45 group-hover:border-amber-300',
+    badge: 'bg-amber-400 text-[#09090b]',
+  },
+  4: {
+    bg: 'from-purple-500/25 via-purple-900/15 to-[#0b0d14]',
+    border: 'border-purple-400/40 group-hover:border-purple-300',
+    badge: 'bg-purple-500 text-white',
+  },
+  3: {
+    bg: 'from-sky-500/25 via-sky-900/15 to-[#0b0d14]',
+    border: 'border-sky-400/40 group-hover:border-sky-300',
+    badge: 'bg-sky-500 text-[#09090b]',
+  },
+  2: {
+    bg: 'from-emerald-500/20 via-emerald-900/15 to-[#0b0d14]',
+    border: 'border-emerald-400/35 group-hover:border-emerald-300',
+    badge: 'bg-emerald-500 text-[#09090b]',
+  },
+};
+
+/* Иконка предмета в слоте инвентаря (object-contain, без уродливой обрезки краёв) */
+const BestiaryItemIcon = ({
+  entry,
+  size = 'md',
+}: {
+  entry: BestiaryEntry;
+  size?: 'sm' | 'md' | 'lg';
+}) => {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [entry.image]);
+
+  const rStyle =
+    RARITY_SLOT_STYLE[entry.rarity ?? 4] ?? RARITY_SLOT_STYLE[4];
+  const dims =
+    size === 'lg'
+      ? 'w-24 h-24 rounded-2xl p-3'
+      : size === 'sm'
+      ? 'w-11 h-11 rounded-xl p-1.5'
+      : 'w-16 h-16 rounded-2xl p-2';
+
+  return (
+    <div
+      className={`relative ${dims} bg-gradient-to-br ${rStyle.bg} border ${rStyle.border} flex items-center justify-center shrink-0 overflow-hidden shadow-inner transition-colors`}
+    >
+      {entry.image && !failed ? (
+        <img
+          src={entry.image}
+          alt={entry.name}
+          onError={() => setFailed(true)}
+          className="w-full h-full object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.85)] transition-transform duration-300 group-hover:scale-110"
+          draggable={false}
+        />
+      ) : (
+        <span className="text-base font-black text-accent-light">
+          {entry.name.slice(0, 2).toUpperCase()}
+        </span>
+      )}
+    </div>
+  );
+};
+
+const MATERIAL_SUBCATEGORIES = [
+  'all',
+  'Вознесение (Боссы)',
+  'Диковинки мира',
+  'Еженедельные боссы',
+  'Оружие и Форте',
+  'Дроп с врагов',
+  'Опыт и Валюта',
+] as const;
+
+const inputClass =
+  'w-full bg-bg-secondary border border-glass-border rounded-xl px-3.5 py-2.5 text-sm text-ivory focus-ring';
+const labelClass = 'block text-xs font-bold text-gray-300 mb-1.5';
 
 export const BestiaryPage = () => {
-  const { catId } = useParams<{ catId: string }>();
+  useDocumentMeta({
+    title: 'Бестиарий и Архив Материалов — Stellar Wiki',
+    description:
+      'Полная база предметов Wuthering Waves (патч 3.7): все материалы вознесения, боссы, цветы, оружие, эхо и враги.',
+  });
+
   const { user, token } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const [data, setData] = useState<{ categories: BestiaryCategory[]; entries: BestiaryEntry[] } | null>(null);
+
+  const [serverEntries, setServerEntries] = useState<BestiaryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Режим просмотра: 'shelves' (полки категорий) или конкретная открытая категория
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [subFilter, setSubFilter] = useState<string>('all');
+  const [rarityFilter, setRarityFilter] = useState<'all' | 5 | 4 | 3 | 2>('all');
   const [search, setSearch] = useState('');
-  const [expanded, setExpanded] = useState(false);
+
+  // Модалки просмотра и редактирования
   const [detail, setDetail] = useState<BestiaryEntry | null>(null);
-  const [itemForm, setItemForm] = useState<ItemForm | null>(null);
-  const [catForm, setCatForm] = useState<CatForm | null>(null);
+  const [form, setForm] = useState<FormState | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importCat, setImportCat] = useState('');
-  const [importSource, setImportSource] = useState('');
-  const [importText, setImportText] = useState('');
-  const [importBusy, setImportBusy] = useState(false);
-  const [importLog, setImportLog] = useState('');
-  const [scriptOpen, setScriptOpen] = useState(false);
-  const [scriptCopied, setScriptCopied] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
       const r = await apiGetBestiary();
-      setData({ categories: r.categories, entries: r.entries });
+      setServerEntries(r.entries ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Не удалось загрузить бестиарий');
+      setError(e instanceof Error ? e.message : 'Не удалось загрузить серверный бестиарий');
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
-  useEffect(() => { setSearch(''); setExpanded(false); }, [catId]);
 
-  const current = data?.categories.find((c) => String(c.id) === catId) ?? null;
-  useDocumentMeta(
-    current
-      ? {
-          title: `Бестиарий: ${current.name}`,
-          description: current.description || `Категория «${current.name}» в картотеке Stellar Wiki.`,
-          path: `/bestiary/${current.id}`,
-        }
-      : { title: 'Бестиарий', description: 'Универсальная картотека Wuthering Waves: оружие, враги, эхо, материалы и любые другие предметы.' },
-  );
+  useEffect(() => {
+    load();
+  }, []);
 
-  const countFor = (catName: string) => data?.entries.filter((e) => e.category === catName).length ?? 0;
+  // Объединяем серверные записи с нашей полной встроенной базой материалов (без дублей по имени)
+  const allEntries = useMemo(() => {
+    const builtin = getBuiltinMaterialsAsEntries();
+    const existingNames = new Set(
+      serverEntries.map((e) => `${e.category.toLowerCase()}|${e.name.toLowerCase()}`),
+    );
+    const merged = [...serverEntries];
+    for (const b of builtin) {
+      const key = `${b.category.toLowerCase()}|${b.name.toLowerCase()}`;
+      if (!existingNames.has(key)) {
+        merged.push(b);
+      }
+    }
+    return merged;
+  }, [serverEntries]);
 
-  const items = useMemo(() => {
-    if (!current || !data) return [];
+  // Группировка по категориям для витрины полок
+  const shelves = useMemo(() => {
+    const map = new Map<string, BestiaryEntry[]>();
+    for (const item of allEntries) {
+      const list = map.get(item.category) ?? [];
+      list.push(item);
+      map.set(item.category, list);
+    }
+    // Гарантируем порядок ключевых полок
+    const order = ['Материалы', 'Оружие', 'Эхо', 'Враги'];
+    const keys = [...new Set([...order, ...map.keys()])].filter((k) => (map.get(k)?.length ?? 0) > 0);
+    return keys.map((cat) => {
+      const items = map.get(cat) ?? [];
+      const fives = items.filter((i) => i.rarity === 5).length;
+      const fours = items.filter((i) => i.rarity === 4).length;
+      return {
+        category: cat,
+        count: items.length,
+        fives,
+        fours,
+        samples: items.slice(0, 4),
+      };
+    });
+  }, [allEntries]);
+
+  // Фильтрация записей внутри выбранной категории (или при глобальном поиске)
+  const filteredEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return data.entries
-      .filter((e) => e.category === current.name)
-      .filter((e) =>
-        !q ||
+    return allEntries.filter((e) => {
+      if (activeCategory && e.category !== activeCategory) return false;
+      if (rarityFilter !== 'all' && e.rarity !== rarityFilter) return false;
+      if (
+        activeCategory === 'Материалы' &&
+        subFilter !== 'all' &&
+        e.props?.['Подкатегория'] !== subFilter
+      ) {
+        return false;
+      }
+      if (!q) return true;
+      return (
         e.name.toLowerCase().includes(q) ||
         e.description.toLowerCase().includes(q) ||
         e.tags.toLowerCase().includes(q) ||
-        Object.values(e.props ?? {}).some((v) => String(v).toLowerCase().includes(q)),
-      )
-      .sort((a, b) => (b.rarity ?? 0) - (a.rarity ?? 0) || a.name.localeCompare(b.name, 'ru'));
-  }, [data, current, search]);
+        Object.values(e.props ?? {}).some((v) => String(v).toLowerCase().includes(q))
+      );
+    });
+  }, [allEntries, activeCategory, rarityFilter, subFilter, search]);
 
-  const saveCat = async () => {
-    if (!catForm || !token) return;
-    if (!catForm.name.trim()) { setMsg('Название категории обязательно'); return; }
+  // Кнопка для админа: выгрузить встроенный каталог материалов в БД Supabase
+  const syncMaterialsToSupabase = async () => {
+    if (!token || !isAdmin) return;
     setBusy(true);
-    setMsg(null);
-    const payload = {
-      name: catForm.name.trim(),
-      image: catForm.image.trim() || null,
-      description: catForm.description,
-      sort: Number(catForm.sort || 0),
-    };
+    setSyncStatus('Синхронизация материалов с базой Supabase...');
     try {
-      if (catForm.id === null) await apiCreateCategory(token, payload);
-      else await apiUpdateCategory(token, catForm.id, payload);
-      setCatForm(null);
+      const existingNames = new Set(
+        serverEntries
+          .filter((e) => e.category === 'Материалы')
+          .map((e) => e.name.toLowerCase()),
+      );
+      const toUpload = BUILTIN_MATERIALS.filter(
+        (m) => !existingNames.has(m.name.toLowerCase()),
+      );
+
+      let uploaded = 0;
+      for (const m of toUpload) {
+        await apiCreateBestiary(token, {
+          category: 'Материалы',
+          name: m.name,
+          rarity: m.rarity,
+          description: m.description,
+          image: m.image,
+          props: { Подкатегория: m.subcategory, ...m.props },
+          tags: `${m.subcategory.toLowerCase()}, ${m.tags}`,
+        });
+        uploaded++;
+      }
       await load();
+      setSyncStatus(
+        uploaded > 0
+          ? `Успешно записано в БД Supabase: ${uploaded} новых материалов!`
+          : 'Все материалы уже синхронизированы с БД Supabase.',
+      );
+      setTimeout(() => setSyncStatus(null), 5000);
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Не удалось сохранить категорию');
+      setSyncStatus(e instanceof Error ? e.message : 'Ошибка синхронизации');
     } finally {
       setBusy(false);
     }
   };
-  const removeCat = async (c: BestiaryCategory) => {
-    if (!token) return;
-    const n = countFor(c.name);
-    if (!window.confirm(`Удалить категорию «${c.name}» вместе со всеми её предметами (${n})? Это необратимо.`)) return;
-    setBusy(true);
-    try {
-      await apiDeleteCategory(token, c.id);
-      await load();
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Не удалось удалить категорию');
-    } finally {
-      setBusy(false);
-    }
-  };
 
-  const saveItem = async () => {
-    if (!itemForm || !token) return;
-    if (!itemForm.category || !itemForm.name.trim()) { setMsg('Категория и название обязательны'); return; }
+  const saveForm = async () => {
+    if (!form || !token) return;
+    if (!form.category.trim() || !form.name.trim()) {
+      setMsg('Категория и название обязательны');
+      return;
+    }
     setBusy(true);
     setMsg(null);
     const props: Record<string, string> = {};
-    itemForm.props.forEach((p) => { if (p.k.trim()) props[p.k.trim()] = p.v; });
+    form.props.forEach((p) => {
+      if (p.k.trim()) props[p.k.trim()] = p.v;
+    });
     const payload = {
-      category: itemForm.category,
-      name: itemForm.name.trim(),
-      rarity: itemForm.rarity === '' ? null : Number(itemForm.rarity),
-      description: itemForm.description,
-      image: itemForm.image.trim() || null,
-      tags: itemForm.tags,
+      category: form.category.trim(),
+      name: form.name.trim(),
+      rarity: form.rarity === '' ? null : Number(form.rarity),
+      description: form.description,
+      image: form.image.trim() || null,
+      tags: form.tags,
       props,
     };
     try {
-      if (itemForm.id === null) await apiCreateBestiary(token, payload);
-      else await apiUpdateBestiary(token, itemForm.id, payload);
-      setItemForm(null);
+      if (form.id === null || form.id >= 9000) {
+        // Если это новая запись или редактирование встроенной — сохраняем в Supabase
+        await apiCreateBestiary(token, payload);
+      } else {
+        await apiUpdateBestiary(token, form.id, payload);
+      }
+      setForm(null);
       await load();
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Не удалось сохранить предмет');
+      setMsg(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally {
       setBusy(false);
     }
   };
-  const removeItem = async (id: number) => {
+
+  const removeEntry = async (id: number) => {
     if (!token) return;
-    if (!window.confirm('Удалить предмет? Это необратимо.')) return;
+    if (id >= 9000) {
+      window.alert('Это встроенный материал базового каталога. Ты можешь переопределить его через «Изменить».');
+      return;
+    }
+    if (!window.confirm('Удалить запись из базы? Это необратимо.')) return;
     setBusy(true);
     try {
       await apiDeleteBestiary(token, id);
       setDetail(null);
       await load();
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Не удалось удалить предмет');
+      setMsg(e instanceof Error ? e.message : 'Не удалось удалить');
     } finally {
       setBusy(false);
     }
   };
 
   const setProp = (i: number, patch: Partial<PropRow>) =>
-    setItemForm((f) => (f ? { ...f, props: f.props.map((p, j) => (j === i ? { ...p, ...patch } : p)) } : f));
-
-  const moveProp = (i: number, dir: -1 | 1) =>
-    setItemForm((f) => {
-      if (!f) return f;
-      const j = i + dir;
-      if (j < 0 || j >= f.props.length) return f;
-      const next = [...f.props];
-      [next[i], next[j]] = [next[j], next[i]];
-      return { ...f, props: next };
-    });
-
-  const copyScript = async () => {
-    await navigator.clipboard.writeText(SCRAPER_SCRIPT);
-    setScriptCopied(true);
-    setTimeout(() => setScriptCopied(false), 1500);
-  };
-  const doBulkImport = async () => {
-    if (!token) return;
-    let arr: any[] = [];
-    try {
-      arr = JSON.parse(importText);
-    } catch {
-      setImportLog('Невалидный JSON: проверь, что вставил весь текст из буфера (начинается с [ и заканчивается ])');
-      return;
-    }
-    if (!Array.isArray(arr) || arr.length === 0) {
-      setImportLog('Ожидался массив записей, пришло что-то другое');
-      return;
-    }
-    const cat = importCat || current?.name || '';
-    if (!cat) { setImportLog('Выбери категорию для импорта'); return; }
-    setImportBusy(true);
-    setImportLog('Старт...');
-    const existing = new Set(
-      (data?.entries ?? []).filter((e) => e.category === cat).map((e) => e.name.toLowerCase()),
+    setForm((f) =>
+      f ? { ...f, props: f.props.map((p, j) => (j === i ? { ...p, ...patch } : p)) } : f,
     );
-    let created = 0;
-    let skipped = 0;
-    for (const item of arr) {
-      const name = String(item?.name ?? '').trim();
-      if (!name || existing.has(name.toLowerCase())) { skipped++; continue; }
-      const props: Record<string, string> = {};
-      if (item.type) props['Тип'] = String(item.type);
-      if (item.atk) props['ATK (Lv.90)'] = String(item.atk);
-      if (item.substat && item.substatValue) props[String(item.substat)] = String(item.substatValue);
-      if (importSource.trim()) props['Источник'] = importSource.trim();
-      try {
-        await apiCreateBestiary(token, {
-          category: cat,
-          name,
-          rarity: item.rarity === undefined || item.rarity === null || item.rarity === '' ? null : Number(item.rarity),
-          description: String(item.description ?? ''),
-          image: item.image ? String(item.image) : null,
-          tags: '',
-          props,
-        });
-        existing.add(name.toLowerCase());
-        created++;
-      } catch {
-        skipped++;
-      }
-      setImportLog(`Создано: ${created} · пропущено: ${skipped} · из ${arr.length}`);
-    }
-    setImportBusy(false);
-    setImportLog(`Готово. Создано: ${created}, пропущено (дубли/ошибки): ${skipped}`);
-    setImportText('');
-    await load();
-  };
-
-  /* Компактная карточка предмета: без описания — оно внутри модалки */
-  const renderCard = (e: BestiaryEntry) => (
-    <button
-      key={e.id}
-      onClick={() => setDetail(e)}
-      className="glass-panel-hover overflow-hidden text-left focus-ring group"
-      aria-label={`Открыть запись ${e.name}`}
-    >
-      <div className="relative aspect-[4/3] overflow-hidden bg-bg-secondary">
-        <SafeImage src={e.image} alt={e.name} className="w-full h-full transition-transform duration-300 group-hover:scale-105" />
-        {!e.image && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a2118] to-[#14100c]">
-            <span className="text-lg sm:text-xl font-bold text-accent-light/70">{e.name.slice(0, 2).toUpperCase()}</span>
-          </div>
-        )}
-        {e.rarity !== null && (
-          <span className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 px-1.5 sm:px-2 py-0.5 rounded-md bg-black/65 backdrop-blur text-amber-300 text-[10px] sm:text-xs font-bold border border-amber-400/35">
-            {'★'.repeat(e.rarity)}
-          </span>
-        )}
-      </div>
-      <div className="p-2.5 sm:p-3 bg-gradient-to-b from-bg-secondary/85 to-bg/95">
-        <h4 className="font-bold text-ivory group-hover:text-accent-light transition-colors truncate text-xs sm:text-sm">
-          {e.name}
-        </h4>
-        {e.tags && (
-          <p className="flex items-center gap-1 text-[10px] text-gray-500 mt-1 truncate">
-            <Tag size={10} className="shrink-0" /> {e.tags}
-          </p>
-        )}
-      </div>
-    </button>
-  );
-
-  if (!loading && catId && !current) {
-    return (
-      <div className="glass-panel py-16 flex flex-col items-center text-center gap-4">
-        <Archive size={40} className="text-gray-600" />
-        <div>
-          <p className="text-ivory font-semibold">Категория не найдена</p>
-          <p className="text-gray-500 text-sm mt-1">Возможно, полку переименовали или удалили</p>
-        </div>
-        <Link to="/bestiary" className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-glass border border-glass-border text-sm text-ivory hover:border-accent/40 transition-colors focus-ring">
-          <ArrowLeft size={15} /> Ко всем категориям
-        </Link>
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* ========== ВИТРИНА КАТЕГОРИЙ ========== */}
-      {!catId && (
-        <>
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 sm:gap-4">
-            <div>
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-accent-light mb-1">
-                <Sparkles size={12} /> База данных Соларис-3
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-ivory flex items-center gap-3">
-                <Archive size={24} className="text-accent-light shrink-0" /> Бестиарий
-              </h2>
-              <p className="text-gray-400 mt-0.5 text-sm">
-                Полки Соларис-3: выбери категорию и листай её содержимое
-              </p>
-            </div>
-            {isAdmin && (
+    <div className="space-y-6 pb-10 w-full">
+      <style>{`
+        main > div {
+          max-width: 1540px !important;
+        }
+      `}</style>
+
+      {/* ==================== ШАПКА БЕСТИАРИЯ ==================== */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.2em] text-accent-light mb-1">
+            <Sparkles size={13} />
+            <span>БАЗА ДАННЫХ СОЛАРИС-3 · ПАТЧ 3.7</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {activeCategory && (
               <button
-                onClick={() => { setCatForm({ id: null, name: '', image: '', description: '', sort: '0' }); setMsg(null); }}
-                className="btn-luxury focus-ring shrink-0"
+                type="button"
+                onClick={() => {
+                  setActiveCategory(null);
+                  setSubFilter('all');
+                  setRarityFilter('all');
+                }}
+                className="p-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-ivory transition-all"
+                title="Вернуться ко всем полкам"
               >
-                <Plus size={16} /> Новая категория
+                <ArrowLeft size={18} />
               </button>
             )}
+            <h1 className="text-3xl sm:text-4xl font-black text-white flex items-center gap-3">
+              <Archive size={28} className="text-accent-light" />
+              <span>{activeCategory ? `Архив: ${activeCategory}` : 'Бестиарий Соларис-3'}</span>
+            </h1>
           </div>
+          <p className="text-gray-400 text-sm mt-1">
+            {activeCategory
+              ? CATEGORY_META[activeCategory]?.subtitle ?? `Все записи категории «${activeCategory}»`
+              : 'Интерактивное хранилище материалов вознесения, оружия, эхо и бестий Wuthering Waves'}
+          </p>
+        </div>
 
-          {error && (
-            <div className="glass-panel p-5 flex items-center gap-3">
-              <AlertCircle size={18} className="text-red-400 shrink-0" />
-              <p className="text-sm text-red-300 flex-1">{error}</p>
-              <button onClick={load} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-glass border border-glass-border text-sm hover:border-accent/40 transition-colors focus-ring">
-                <RefreshCw size={14} /> Повторить
-              </button>
-            </div>
-          )}
-
-          {loading ? (
-            <div className="glass-panel p-8 text-center text-gray-500">Загрузка картотеки...</div>
-          ) : (data?.categories.length ?? 0) === 0 ? (
-            <div className="glass-panel py-16 flex flex-col items-center text-center gap-4">
-              <Archive size={40} className="text-gray-600" />
-              <div>
-                <p className="text-ivory font-semibold">Пока пусто</p>
-                <p className="text-gray-500 text-sm mt-1">{isAdmin ? 'Создай первую категорию кнопкой сверху' : 'Категории ещё не заведены'}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-              {data!.categories.map((c) => {
-                const Icon = categoryIcon(c.name);
-                const n = countFor(c.name);
-                return (
-                  <div key={c.id} className="relative group">
-                    <Link to={`/bestiary/${c.id}`} className="block glass-panel-hover solaris-crest overflow-hidden focus-ring rounded-2xl">
-                      <div className="relative aspect-[16/9] overflow-hidden bg-bg-secondary">
-                        <SafeImage src={c.image} alt={c.name} className="w-full h-full transition-transform duration-300 group-hover:scale-105" />
-                        {!c.image && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a2118] via-[#1b1510] to-[#100d0a]">
-                            <Icon size={38} className="text-accent-light/70 group-hover:scale-110 transition-transform" />
-                          </div>
-                        )}
-                        <span className="absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded-md bg-black/65 backdrop-blur border border-glass-border text-[11px] font-mono font-bold text-accent-light">
-                          {n}
-                        </span>
-                      </div>
-                      <div className="p-3.5 sm:p-4 flex items-center justify-between gap-2">
-                        <h3 className="font-bold text-ivory group-hover:text-accent-light transition-colors truncate">
-                          {c.name}
-                        </h3>
-                        <span className="text-[11px] text-gray-500 group-hover:text-accent-light transition-colors">
-                          Открыть →
-                        </span>
-                      </div>
-                    </Link>
-                    {isAdmin && (
-                      <div className="absolute top-2.5 left-2.5 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => { setCatForm(catToForm(c)); setMsg(null); }}
-                          className="p-2 rounded-lg bg-black/65 backdrop-blur border border-glass-border text-gray-300 hover:text-ivory hover:border-accent/50 transition-colors focus-ring"
-                          aria-label={`Изменить категорию ${c.name}`}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          onClick={() => removeCat(c)}
-                          disabled={busy}
-                          className="p-2 rounded-lg bg-black/65 backdrop-blur border border-glass-border text-gray-300 hover:text-red-300 hover:border-red-500/50 transition-colors focus-ring disabled:opacity-50"
-                          aria-label={`Удалить категорию ${c.name}`}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ========== ПОЛКА КАТЕГОРИИ ========== */}
-      {catId && current && (
-        <>
-          <Link to="/bestiary" className="inline-flex items-center gap-2 text-gray-400 hover:text-ivory text-sm font-medium transition-colors focus-ring rounded-lg">
-            <ArrowLeft size={17} /> Ко всем категориям
-          </Link>
-
-          <div className="glass-panel solaris-crest p-4 sm:p-5 flex flex-col md:flex-row gap-4 sm:gap-5 items-start">
-            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl border border-glass-border overflow-hidden shrink-0 relative">
-              <SafeImage src={current.image} alt={current.name} className="w-full h-full" />
-              {!current.image && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a2118] to-[#14100c]">
-                  {(() => { const Icon = categoryIcon(current.name); return <Icon size={28} className="text-accent-light/60" />; })()}
-                </div>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl sm:text-2xl font-extrabold text-ivory">{current.name}</h2>
-                <span className="px-2.5 py-0.5 rounded-md bg-accent/15 border border-accent/30 text-accent-light text-xs font-mono font-bold">
-                  {countFor(current.name)}
-                </span>
-              </div>
-              {current.description && <p className="text-sm text-gray-400 mt-1 leading-relaxed">{current.description}</p>}
-            </div>
-            {isAdmin && (
-              <div className="flex gap-2 shrink-0 w-full md:w-auto">
-                <button
-                  onClick={() => {
-                    setImportCat(current.name);
-                    setImportLog('');
-                    setImportOpen(true);
-                  }}
-                  className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-glass border border-glass-border text-sm text-ivory hover:border-accent/40 transition-colors focus-ring"
-                >
-                  <Download size={15} /> Импорт пачкой
-                </button>
-                <button
-                  onClick={() => { setItemForm({ id: null, category: current.name, name: '', rarity: '', description: '', image: '', tags: '', props: [{ k: '', v: '' }] }); setMsg(null); }}
-                  className="flex-1 md:flex-none btn-luxury focus-ring"
-                >
-                  <Plus size={15} /> Добавить предмет
-                </button>
-                <button
-                  onClick={() => { setCatForm(catToForm(current)); setMsg(null); }}
-                  className="p-2.5 rounded-xl bg-glass border border-glass-border text-gray-300 hover:text-ivory hover:border-accent/40 transition-colors focus-ring"
-                  aria-label="Изменить категорию"
-                >
-                  <Pencil size={15} />
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="glass-panel p-2.5 sm:p-3 flex flex-wrap gap-2 items-center relative z-30">
-            <div className="relative flex-1 min-w-[160px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Поиск по полке..."
-                className="pl-9 pr-4 py-2 bg-bg-secondary border border-glass-border rounded-xl text-sm focus-ring w-full"
-                aria-label="Поиск по категории"
-              />
-            </div>
-            <span className="text-xs text-gray-400 font-mono pr-1">Найдено: {items.length}</span>
-          </div>
-
-          {items.length === 0 ? (
-            <div className="glass-panel py-16 flex flex-col items-center text-center gap-4">
-              <Archive size={40} className="text-gray-600" />
-              <div>
-                <p className="text-ivory font-semibold">На полке пусто</p>
-                <p className="text-gray-500 text-sm mt-1">
-                  {search ? 'Попробуй другой запрос' : isAdmin ? 'Добавь первый предмет или импортируй пачкой' : 'Предметы ещё не добавлены'}
-                </p>
-              </div>
-            </div>
-          ) : (
+        {/* Кнопки администратора */}
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {isAdmin && (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
-                {(expanded ? items : items.slice(0, PAGE_SIZE)).map(renderCard)}
-              </div>
-              {items.length > PAGE_SIZE && (
-                <button
-                  onClick={() => setExpanded((v) => !v)}
-                  className="w-full py-2.5 rounded-xl bg-glass border border-glass-border text-sm text-gray-300 hover:text-ivory hover:border-accent/40 transition-colors focus-ring"
-                >
-                  {expanded ? 'Свернуть' : `Показать ещё ${items.length - PAGE_SIZE}`}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={syncMaterialsToSupabase}
+                disabled={busy}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 text-xs font-bold text-ivory transition-all focus-ring disabled:opacity-50"
+                title="Записать все встроенные материалы в облачную таблицу bestiary"
+              >
+                <CloudUpload size={15} className="text-accent-light" />
+                <span>Синхронизировать материалы в БД</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setForm({
+                    ...EMPTY_FORM,
+                    category: activeCategory || 'Материалы',
+                    props: [{ k: 'Источник', v: '' }],
+                  });
+                  setMsg(null);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] text-xs sm:text-sm font-extrabold hover:brightness-105 transition-all focus-ring"
+              >
+                <Plus size={16} />
+                <span>Добавить запись</span>
+              </button>
             </>
           )}
-        </>
+        </div>
+      </div>
+
+      {/* Уведомление синхронизации */}
+      {syncStatus && (
+        <div className="glass-panel px-4 py-3 flex items-center gap-2.5 border-emerald-400/40 text-emerald-200 text-xs font-bold">
+          <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+          <span>{syncStatus}</span>
+        </div>
       )}
 
-      {/* ========== МОДАЛКА ПРОСМОТРА ========== */}
-      {detail && (
-        <div className={sheetClass} onClick={() => setDetail(null)} role="dialog" aria-modal="true">
-          <div className={sheetPanel} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start gap-4 mb-4">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl border border-glass-border overflow-hidden shrink-0 relative">
-                <SafeImage src={detail.image} alt={detail.name} className="w-full h-full" />
-                {!detail.image && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a2118] to-[#14100c]">
-                    <span className="text-xl font-bold text-accent-light/70">{detail.name.slice(0, 2).toUpperCase()}</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <Link
-                    to={`/bestiary/${data?.categories.find((c) => c.name === detail.category)?.id ?? ''}`}
-                    onClick={() => setDetail(null)}
-                    className="px-2 py-0.5 rounded-md bg-accent/15 border border-accent/30 text-accent-light text-[10px] font-bold uppercase tracking-wider hover:border-accent/60 transition-colors"
-                  >
-                    {detail.category}
-                  </Link>
-                  {detail.rarity !== null && <span className="text-amber-300 text-xs font-bold">{'★'.repeat(detail.rarity)}</span>}
-                </div>
-                <h3 className="text-xl sm:text-2xl font-bold text-ivory leading-tight">{detail.name}</h3>
-                {detail.tags && <p className="flex items-center gap-1 text-xs text-gray-500 mt-1"><Tag size={11} /> {detail.tags}</p>}
-              </div>
-              <button onClick={() => setDetail(null)} className="p-1.5 rounded-lg text-gray-400 hover:text-ivory focus-ring shrink-0" aria-label="Закрыть">
-                <X size={18} />
+      {error && (
+        <div className="glass-panel p-4 flex items-center gap-3">
+          <AlertCircle size={18} className="text-amber-400 shrink-0" />
+          <p className="text-xs text-gray-300 flex-1">
+            Сервер временно недоступен ({error}) — отображается встроенный архив Соларис-3.
+          </p>
+          <button
+            onClick={load}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-glass border border-glass-border text-xs hover:border-accent/40"
+          >
+            <RefreshCw size={13} /> Обновить
+          </button>
+        </div>
+      )}
+
+      {/* ==================== ПАНЕЛЬ ПОИСКА И БЫСТРОГО ПЕРЕКЛЮЧЕНИЯ ПОЛОК ==================== */}
+      <div className="glass-panel p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[240px]">
+            <Search
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+              size={16}
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск по названию материала, оружия, босса или имени персонажа (например: Camellya, Jinhsi, флогистон)..."
+              className="pl-10 pr-9 py-2.5 bg-[#090a10] border border-white/12 rounded-xl text-sm text-ivory placeholder-gray-500 focus-ring w-full"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+              >
+                <X size={15} />
               </button>
-            </div>
-            {detail.description && <p className="text-sm text-gray-300 leading-relaxed mb-4">{detail.description}</p>}
-            {Object.keys(detail.props ?? {}).length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-                {Object.entries(detail.props).map(([k, v]) => (
-                  <div key={k} className="p-3 rounded-lg bg-bg-secondary/60 border border-glass-border">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">{k}</p>
-                    <p className="text-sm font-semibold text-ivory">{String(v)}</p>
-                  </div>
+            )}
+          </div>
+
+          {/* Быстрые вкладки категорий */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveCategory(null);
+                setSubFilter('all');
+              }}
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold border transition-all ${
+                activeCategory === null
+                  ? 'bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] border-transparent shadow'
+                  : 'bg-white/[0.04] border-white/10 text-gray-300 hover:text-white'
+              }`}
+            >
+              Все полки · {allEntries.length}
+            </button>
+
+            {shelves.map((sh) => (
+              <button
+                key={sh.category}
+                type="button"
+                onClick={() => {
+                  setActiveCategory(sh.category);
+                  setSubFilter('all');
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold border transition-all ${
+                  activeCategory === sh.category
+                    ? 'bg-accent/25 border-accent text-accent-light shadow-glow-sm'
+                    : 'bg-white/[0.04] border-white/10 text-gray-300 hover:text-white'
+                }`}
+              >
+                {sh.category} · {sh.count}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Подкатегории материалов и фильтр редкости (показываются внутри категории или при поиске) */}
+        {(activeCategory !== null || search.trim().length > 0) && (
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10">
+            {activeCategory === 'Материалы' ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {MATERIAL_SUBCATEGORIES.map((sub) => (
+                  <button
+                    key={sub}
+                    type="button"
+                    onClick={() => setSubFilter(sub)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                      subFilter === sub
+                        ? 'bg-amber-500/20 border-amber-400/60 text-amber-200'
+                        : 'bg-white/[0.03] border-white/10 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {sub === 'all' ? 'Все типы материалов' : sub}
+                  </button>
                 ))}
               </div>
-            )}
-            {isAdmin && (
-              <div className="flex gap-2 pt-2 border-t border-glass-border">
-                <button
-                  onClick={() => { setItemForm(entryToForm(detail)); setDetail(null); setMsg(null); }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-glass border border-glass-border text-sm text-ivory hover:border-accent/40 transition-colors focus-ring"
-                >
-                  <Pencil size={14} /> Изменить
-                </button>
-                <button
-                  onClick={() => removeItem(detail.id)}
-                  disabled={busy}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/25 text-red-300 text-sm hover:bg-red-500/20 transition-colors focus-ring disabled:opacity-50"
-                >
-                  <Trash2 size={14} /> Удалить
-                </button>
+            ) : (
+              <div className="text-xs text-gray-400 flex items-center gap-1.5">
+                <Filter size={13} className="text-accent-light" />
+                <span>Найдено предметов: {filteredEntries.length}</span>
               </div>
             )}
-          </div>
-        </div>
-      )}
 
-      {/* ========== МОДАЛКА ИМПОРТА ПАЧКОЙ ========== */}
-      {importOpen && (
-        <div className={sheetClass} onClick={() => setImportOpen(false)} role="dialog" aria-modal="true">
-          <div className={`${sheetPanel} max-w-2xl`} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-ivory flex items-center gap-2">
-                <Download size={18} className="text-accent-light" /> Импорт пачкой с prydwen.gg
-              </h3>
-              <button onClick={() => setImportOpen(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-ivory focus-ring" aria-label="Закрыть">
-                <X size={18} />
-              </button>
-            </div>
-            <ol className="space-y-1.5 text-xs text-gray-400 list-decimal list-inside mb-3">
-              <li>Открой страницу оружия на prydwen.gg и <b className="text-ivory">прокрути до самого низа</b> (картинки грузятся по мере скролла)</li>
-              <li>Нажми F12 → вкладка Console → вставь скрипт v2 (кнопка ниже) → Enter → JSON уйдёт в буфер</li>
-              <li>Вернись сюда, выбери категорию, вставь JSON (Ctrl+V) → «Импортировать»</li>
-            </ol>
-            <button
-              onClick={() => setScriptOpen(!scriptOpen)}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-glass border border-glass-border text-xs text-gray-300 hover:text-ivory hover:border-accent/40 transition-colors focus-ring mb-3"
-            >
-              <Terminal size={13} /> {scriptOpen ? 'Скрыть скрипт-скрейпер v2' : 'Показать скрипт-скрейпер v2'}
-            </button>
-            {scriptOpen && (
-              <div className="mb-3 space-y-2">
-                <pre className="p-3 rounded-lg bg-bg-secondary border border-glass-border text-[10px] text-gray-400 overflow-x-auto max-h-48 overflow-y-auto font-mono">
-                  {SCRAPER_SCRIPT}
-                </pre>
+            {/* Фильтр по редкости */}
+            <div className="flex items-center gap-1.5">
+              {(['all', 5, 4, 3, 2] as const).map((r) => (
                 <button
-                  onClick={copyScript}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-glass border border-glass-border text-xs text-ivory hover:border-accent/40 transition-colors focus-ring"
+                  key={String(r)}
+                  type="button"
+                  onClick={() => setRarityFilter(r)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border transition-all ${
+                    rarityFilter === r
+                      ? 'bg-accent/25 border-accent text-accent-light'
+                      : 'bg-white/[0.03] border-white/10 text-gray-400 hover:text-white'
+                  }`}
                 >
-                  {scriptCopied ? <Check size={12} className="text-emerald-400" /> : <Terminal size={12} />}
-                  {scriptCopied ? 'Скопировано!' : 'Скопировать скрипт v2'}
+                  {r === 'all' ? 'Все ★' : `${r}★`}
                 </button>
-              </div>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-              <label className="block">
-                <span className={labelClass}>Категория-приёмник *</span>
-                <select value={importCat} onChange={(e) => setImportCat(e.target.value)} className={inputClass}>
-                  <option value="">— выбери —</option>
-                  {(data?.categories ?? []).map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className={labelClass}>Источник по умолчанию (необязательно)</span>
-                <input value={importSource} onChange={(e) => setImportSource(e.target.value)} placeholder="Напр.: Ивентовый баннер" className={inputClass} />
-              </label>
+              ))}
             </div>
-            <label className="block mb-3">
-              <span className={labelClass}>JSON из буфера обмена</span>
-              <textarea
-                rows={7}
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-                placeholder='[{"name":"Starfield Calibrator","rarity":5,...}]'
-                className={`${inputClass} font-mono text-xs`}
-              />
-            </label>
-            {importLog && (
-              <p className="mb-3 px-3 py-2 rounded-lg bg-bg-secondary border border-glass-border text-xs text-gray-300 font-mono">
-                {importLog}
-              </p>
-            )}
-            <button
-              onClick={doBulkImport}
-              disabled={importBusy || !importText.trim()}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-accent to-accent-light text-bg font-bold disabled:opacity-50 hover:shadow-glow transition-all focus-ring flex items-center justify-center gap-2"
-            >
-              {importBusy && <RefreshCw size={15} className="animate-spin" />}
-              {importBusy ? 'Импортирую...' : 'Импортировать'}
-            </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* ========== МОДАЛКА ФОРМЫ ПРЕДМЕТА ========== */}
-      {itemForm && (
-        <div className={sheetClass} onClick={() => setItemForm(null)} role="dialog" aria-modal="true">
-          <div className={sheetPanel} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-ivory">{itemForm.id === null ? 'Новый предмет' : 'Правка предмета'}</h3>
-              <button onClick={() => setItemForm(null)} className="p-1.5 rounded-lg text-gray-400 hover:text-ivory focus-ring" aria-label="Закрыть">
-                <X size={18} />
-              </button>
-            </div>
-            {msg && (
-              <p className="mb-4 flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
-                <AlertCircle size={15} className="shrink-0" /> {msg}
-              </p>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-              <label className="block">
-                <span className={labelClass}>Категория *</span>
-                <select value={itemForm.category} onChange={(e) => setItemForm({ ...itemForm, category: e.target.value })} className={inputClass}>
-                  {(data?.categories ?? []).map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className={labelClass}>Название *</span>
-                <input value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })} placeholder="Verdant Summit" className={inputClass} />
-              </label>
-              <label className="block">
-                <span className={labelClass}>Редкость</span>
-                <select value={itemForm.rarity} onChange={(e) => setItemForm({ ...itemForm, rarity: e.target.value })} className={inputClass}>
-                  <option value="">Без редкости</option>
-                  <option value="3">3★</option>
-                  <option value="4">4★</option>
-                  <option value="5">5★</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className={labelClass}>Картинка (url или /images/...)</span>
-                <input value={itemForm.image} onChange={(e) => setItemForm({ ...itemForm, image: e.target.value })} placeholder="/images/verdant-summit.webp" className={inputClass} />
-              </label>
-            </div>
-            <label className="block mb-4">
-              <span className={labelClass}>Описание</span>
-              <textarea rows={3} value={itemForm.description} onChange={(e) => setItemForm({ ...itemForm, description: e.target.value })} className={inputClass} />
-            </label>
-            <label className="block mb-4">
-              <span className={labelClass}>Теги (через запятую)</span>
-              <input value={itemForm.tags} onChange={(e) => setItemForm({ ...itemForm, tags: e.target.value })} placeholder="сигнатура, aero" className={inputClass} />
-            </label>
-            <div className="mb-4">
-              <span className={labelClass}>Свойства (ключ → значение) — стрелки меняют порядок</span>
-              <div className="space-y-2">
-                {itemForm.props.map((p, i) => (
-                  <div key={i} className="flex gap-2 items-stretch">
-                    <input value={p.k} onChange={(e) => setProp(i, { k: e.target.value })} placeholder="Ключ (Тип)" className={`${inputClass} flex-1`} />
-                    <input value={p.v} onChange={(e) => setProp(i, { v: e.target.value })} placeholder="Значение (Broadblade)" className={`${inputClass} flex-1`} />
-                    <div className="flex flex-col gap-0.5 shrink-0 self-center">
-                      <button
-                        onClick={() => moveProp(i, -1)}
-                        disabled={i === 0}
-                        className="p-0.5 rounded-md text-gray-500 hover:text-ivory hover:bg-glass-hover transition-colors focus-ring disabled:opacity-30"
-                        aria-label="Поднять свойство выше"
-                        title="Выше"
+      {/* ==================== РЕЖИМ 1: ВИТРИНА ПОЛОК КАТЕГОРИЙ (если не выбрана категория и пустой поиск) ==================== */}
+      {activeCategory === null && search.trim().length === 0 ? (
+        <div className="space-y-7">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {shelves.map((sh) => {
+              const meta = CATEGORY_META[sh.category] ?? {
+                subtitle: `Все предметы раздела «${sh.category}»`,
+                bannerGrad: 'from-accent/25 via-[#171412] to-[#0a0b10]',
+                borderGlow: 'hover:border-accent/50',
+                accentText: 'text-accent-light',
+                icon: Archive,
+                coverArt:
+                  'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=900&q=80',
+              };
+              const Icon = meta.icon;
+
+              return (
+                <button
+                  key={sh.category}
+                  type="button"
+                  onClick={() => setActiveCategory(sh.category)}
+                  className={`group relative rounded-3xl overflow-hidden border border-white/12 bg-[#0b0d14] text-left transition-all duration-300 hover:-translate-y-1 shadow-[0_20px_55px_rgba(0,0,0,0.75)] ${meta.borderGlow} focus-ring`}
+                >
+                  {/* Фоновый широкоформатный арт полки */}
+                  <div className="relative h-56 sm:h-64 w-full overflow-hidden">
+                    <img
+                      src={meta.coverArt}
+                      alt={sh.category}
+                      className="w-full h-full object-cover object-center opacity-40 group-hover:scale-105 group-hover:opacity-55 transition-all duration-700"
+                      draggable={false}
+                    />
+                    <div
+                      className={`absolute inset-0 bg-gradient-to-br ${meta.bannerGrad} mix-blend-multiply`}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0b0d14] via-[#0b0d14]/65 to-transparent" />
+
+                    {/* Верхняя строка полки: значок + счётчик предметов */}
+                    <div className="absolute top-4 left-5 right-5 flex items-center justify-between gap-2">
+                      <span
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/15 text-xs font-extrabold ${meta.accentText}`}
                       >
-                        <ChevronUp size={14} />
-                      </button>
-                      <button
-                        onClick={() => moveProp(i, 1)}
-                        disabled={i === itemForm.props.length - 1}
-                        className="p-0.5 rounded-md text-gray-500 hover:text-ivory hover:bg-glass-hover transition-colors focus-ring disabled:opacity-30"
-                        aria-label="Опустить свойство ниже"
-                        title="Ниже"
-                      >
-                        <ChevronDown size={14} />
-                      </button>
+                        <Icon size={15} />
+                        <span>Раздел архива</span>
+                      </span>
+
+                      <span className="px-3 py-1 rounded-xl bg-black/70 backdrop-blur-md border border-white/15 text-xs font-black text-white tabular-nums">
+                        {sh.count} предм.
+                      </span>
                     </div>
-                    <button
-                      onClick={() => setItemForm({ ...itemForm, props: itemForm.props.filter((_, j) => j !== i) })}
-                      className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors focus-ring shrink-0 self-center"
-                      aria-label="Убрать свойство"
+
+                    {/* Плавающая мини-витрина из 4 иконок этой категории (без обрезки!) */}
+                    <div className="absolute bottom-4 right-5 hidden sm:flex items-center -space-x-2">
+                      {sh.samples.map((samp) => (
+                        <div
+                          key={samp.id}
+                          className="w-12 h-12 rounded-2xl bg-[#0e1018]/95 border border-white/20 p-1.5 shadow-xl flex items-center justify-center group-hover:translate-y-[-2px] transition-transform"
+                        >
+                          {samp.image ? (
+                            <img
+                              src={samp.image}
+                              alt=""
+                              className="w-full h-full object-contain"
+                              draggable={false}
+                            />
+                          ) : (
+                            <span className="text-[10px] font-bold text-accent-light">
+                              {samp.name.slice(0, 2)}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Название полки и описание */}
+                    <div className="absolute bottom-4 left-5 right-5 sm:right-48">
+                      <h2 className="text-2xl sm:text-3xl font-black text-white group-hover:text-accent-light transition-colors">
+                        {sh.category}
+                      </h2>
+                      <p className="text-xs text-gray-300 mt-1 line-clamp-2 leading-relaxed">
+                        {meta.subtitle}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Нижняя полоса полки со статистикой редкости */}
+                  <div className="px-5 py-3.5 bg-[#0e1018] border-t border-white/[0.08] flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-3">
+                      {sh.fives > 0 && (
+                        <span className="text-amber-300 font-bold">5★: {sh.fives}</span>
+                      )}
+                      {sh.fours > 0 && (
+                        <span className="text-purple-300 font-bold">4★: {sh.fours}</span>
+                      )}
+                      <span className="text-gray-400">Всего записей: {sh.count}</span>
+                    </div>
+                    <span className="font-extrabold text-accent-light group-hover:translate-x-1 transition-transform">
+                      Открыть полку →
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        /* ==================== РЕЖИМ 2: СЕТКА ПРЕДМЕТОВ ВНУТРИ ПОЛКИ / ПОИСКА ==================== */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+          {filteredEntries.map((e) => {
+            const subcat = e.props?.['Подкатегория'] || e.category;
+            const usedBy = e.props?.['Персонажи'] || e.props?.['Источник'] || '';
+
+            return (
+              <button
+                key={`${e.category}-${e.id}`}
+                type="button"
+                onClick={() => setDetail(e)}
+                className="group glass-panel-hover p-4 text-left flex items-start gap-3.5 focus-ring"
+              >
+                <BestiaryItemIcon entry={e} size="md" />
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-accent-light truncate">
+                      {subcat}
+                    </span>
+                    {e.rarity !== null && (
+                      <span className="text-amber-300 text-[11px] font-black shrink-0">
+                        {'★'.repeat(e.rarity)}
+                      </span>
+                    )}
+                  </div>
+
+                  <h3 className="font-extrabold text-sm text-white group-hover:text-accent-light transition-colors line-clamp-1 mt-0.5">
+                    {e.name}
+                  </h3>
+
+                  <p className="text-xs text-gray-400 line-clamp-2 mt-1 leading-relaxed">
+                    {e.description}
+                  </p>
+
+                  {usedBy && (
+                    <p className="text-[11px] text-gray-300/90 font-medium truncate mt-2 pt-1.5 border-t border-white/[0.06]">
+                      <span className="text-gray-500">Инфо: </span>
+                      {usedBy}
+                    </p>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+
+          {filteredEntries.length === 0 && (
+            <div className="col-span-full glass-panel py-16 text-center space-y-2">
+              <Archive size={36} className="text-gray-500 mx-auto" />
+              <p className="text-base font-bold text-white">Записи не найдены</p>
+              <p className="text-xs text-gray-400">
+                Попробуй сбросить фильтр редкости или изменить поисковый запрос
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== МОДАЛКА ДЕТАЛЬНОГО ПРОСМОТРА ПРЕДМЕТА ==================== */}
+      <AnimatePresence>
+        {detail && (
+          <div
+            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+            onClick={() => setDetail(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
+              className="glass-panel w-full max-w-2xl p-6 sm:p-7 max-h-[86vh] overflow-y-auto space-y-5"
+            >
+              <div className="flex items-start gap-4">
+                <BestiaryItemIcon entry={detail} size="lg" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="px-2.5 py-0.5 rounded-lg bg-accent/20 border border-accent/40 text-accent-light text-[11px] font-extrabold uppercase tracking-wider">
+                      {detail.category}
+                    </span>
+                    {detail.rarity !== null && (
+                      <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-black">
+                        {'★'.repeat(detail.rarity)}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-white leading-snug">
+                    {detail.name}
+                  </h3>
+                  {detail.tags && (
+                    <p className="flex items-center gap-1.5 text-xs text-gray-400 mt-1.5">
+                      <Tag size={12} className="text-accent-light shrink-0" />
+                      <span>{detail.tags}</span>
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetail(null)}
+                  className="p-2 rounded-xl bg-white/5 text-gray-400 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {detail.description && (
+                <p className="text-sm text-gray-200 leading-relaxed bg-white/[0.03] border border-white/10 rounded-2xl p-4">
+                  {detail.description}
+                </p>
+              )}
+
+              {Object.keys(detail.props ?? {}).length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {Object.entries(detail.props).map(([k, v]) => (
+                    <div
+                      key={k}
+                      className="p-3.5 rounded-2xl bg-[#090a10]/80 border border-white/10"
                     >
-                      <X size={15} />
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                        {k}
+                      </span>
+                      <span className="block text-sm font-bold text-ivory mt-1">{String(v)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {isAdmin && (
+                <div className="flex flex-wrap justify-end gap-2.5 pt-3 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm(entryToForm(detail));
+                      setDetail(null);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 text-xs font-bold text-ivory"
+                  >
+                    <Pencil size={14} />
+                    <span>Изменить</span>
+                  </button>
+                  {detail.id < 9000 && (
+                    <button
+                      type="button"
+                      onClick={() => removeEntry(detail.id)}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/30 text-xs font-bold text-rose-300"
+                    >
+                      <Trash2 size={14} />
+                      <span>Удалить</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ==================== МОДАЛКА СОЗДАНИЯ / РЕДАКТИРОВАНИЯ (ДЛЯ АДМИНА) ==================== */}
+      <AnimatePresence>
+        {form && (
+          <div
+            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+            onClick={() => setForm(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              onClick={(e) => e.stopPropagation()}
+              className="glass-panel w-full max-w-2xl p-6 sm:p-7 max-h-[88vh] overflow-y-auto space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <h3 className="text-lg font-extrabold text-white">
+                  {form.id === null ? 'Новая запись Бестиария' : 'Редактировать запись'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setForm(null)}
+                  className="p-2 rounded-xl bg-white/5 text-gray-400 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {msg && (
+                <p className="p-3 rounded-xl bg-rose-500/15 border border-rose-400/30 text-xs text-rose-200">
+                  {msg}
+                </p>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label className="block">
+                  <span className={labelClass}>Категория</span>
+                  <input
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    placeholder="Материалы / Оружие / Эхо / Враги"
+                    className={inputClass}
+                  />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className={labelClass}>Название</span>
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="Например: Topological Confinement"
+                    className={inputClass}
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label className="block">
+                  <span className={labelClass}>Редкость</span>
+                  <select
+                    value={form.rarity}
+                    onChange={(e) => setForm({ ...form, rarity: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value="">Без редкости</option>
+                    <option value="2">2★ (Зелёный)</option>
+                    <option value="3">3★ (Синий)</option>
+                    <option value="4">4★ (Фиолетовый)</option>
+                    <option value="5">5★ (Золотой)</option>
+                  </select>
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className={labelClass}>URL иконки / картинки</span>
+                  <input
+                    value={form.image}
+                    onChange={(e) => setForm({ ...form, image: e.target.value })}
+                    placeholder="https://... или /images/..."
+                    className={inputClass}
+                  />
+                </label>
+              </div>
+
+              <label className="block">
+                <span className={labelClass}>Описание</span>
+                <textarea
+                  rows={3}
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  className={inputClass}
+                />
+              </label>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className={labelClass}>Характеристики (ключ — значение)</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm({ ...form, props: [...form.props, { k: '', v: '' }] })
+                    }
+                    className="text-xs font-bold text-accent-light hover:underline"
+                  >
+                    + Добавить свойство
+                  </button>
+                </div>
+                {form.props.map((p, idx) => (
+                  <div key={idx} className="flex gap-2">
+                    <input
+                      value={p.k}
+                      onChange={(e) => setProp(idx, { k: e.target.value })}
+                      placeholder="Свойство (Источник)"
+                      className={inputClass}
+                    />
+                    <input
+                      value={p.v}
+                      onChange={(e) => setProp(idx, { v: e.target.value })}
+                      placeholder="Значение (Босс: Fallacy of No Return)"
+                      className={inputClass}
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm({
+                          ...form,
+                          props: form.props.filter((_, j) => j !== idx),
+                        })
+                      }
+                      className="p-2 text-gray-500 hover:text-rose-400"
+                    >
+                      <X size={16} />
                     </button>
                   </div>
                 ))}
               </div>
-              <button
-                onClick={() => setItemForm({ ...itemForm, props: [...itemForm.props, { k: '', v: '' }] })}
-                className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-glass border border-glass-border text-xs text-gray-300 hover:text-ivory hover:border-accent/40 transition-colors focus-ring"
-              >
-                <Plus size={12} /> Добавить свойство
-              </button>
-            </div>
-            <button
-              onClick={saveItem}
-              disabled={busy}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-accent to-accent-light text-bg font-bold disabled:opacity-50 hover:shadow-glow transition-all focus-ring"
-            >
-              {busy ? 'Сохраняю...' : 'Сохранить'}
-            </button>
-          </div>
-        </div>
-      )}
 
-      {/* ========== МОДАЛКА ФОРМЫ КАТЕГОРИИ ========== */}
-      {catForm && (
-        <div className={sheetClass} onClick={() => setCatForm(null)} role="dialog" aria-modal="true">
-          <div className={`${sheetPanel} max-w-lg`} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-ivory">{catForm.id === null ? 'Новая категория' : 'Правка категории'}</h3>
-              <button onClick={() => setCatForm(null)} className="p-1.5 rounded-lg text-gray-400 hover:text-ivory focus-ring" aria-label="Закрыть">
-                <X size={18} />
-              </button>
-            </div>
-            {msg && (
-              <p className="mb-4 flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
-                <AlertCircle size={15} className="shrink-0" /> {msg}
-              </p>
-            )}
-            <div className="space-y-4">
               <label className="block">
-                <span className={labelClass}>Название *</span>
-                <input value={catForm.name} onChange={(e) => setCatForm({ ...catForm, name: e.target.value })} placeholder="Оружие / Враги / Еда..." className={inputClass} />
+                <span className={labelClass}>Теги для поиска (через запятую)</span>
+                <input
+                  value={form.tags}
+                  onChange={(e) => setForm({ ...form, tags: e.target.value })}
+                  className={inputClass}
+                />
               </label>
-              <label className="block">
-                <span className={labelClass}>Картинка полки (url или /images/...)</span>
-                <input value={catForm.image} onChange={(e) => setCatForm({ ...catForm, image: e.target.value })} placeholder="/images/cat-weapons.webp" className={inputClass} />
-              </label>
-              <label className="block">
-                <span className={labelClass}>Описание</span>
-                <textarea rows={2} value={catForm.description} onChange={(e) => setCatForm({ ...catForm, description: e.target.value })} className={inputClass} />
-              </label>
-              <label className="block">
-                <span className={labelClass}>Порядок (меньше — выше)</span>
-                <input type="number" value={catForm.sort} onChange={(e) => setCatForm({ ...catForm, sort: e.target.value })} className={inputClass} />
-              </label>
-            </div>
-            <button
-              onClick={saveCat}
-              disabled={busy}
-              className="mt-5 w-full py-3 rounded-xl bg-gradient-to-r from-accent to-accent-light text-bg font-bold disabled:opacity-50 hover:shadow-glow transition-all focus-ring"
-            >
-              {busy ? 'Сохраняю...' : 'Сохранить'}
-            </button>
+
+              <div className="flex justify-end gap-2.5 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setForm(null)}
+                  className="px-4 py-2 rounded-xl bg-white/5 text-xs font-bold text-gray-300"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={saveForm}
+                  disabled={busy}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] text-xs font-extrabold"
+                >
+                  {busy ? 'Сохранение...' : 'Сохранить'}
+                </button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 };
