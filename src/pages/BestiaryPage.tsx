@@ -1,6 +1,6 @@
 // Бестиарий Соларис-3 (Полный редизайн полок и карточек + встроенный каталог всех материалов до патча 3.7):
 // 1) Коллекционные обложки категорий с мини-витриной предметов и разбивкой по редкости
-// 2) Автоматическое слияние встроенной базы материалов (45+ наборов / все цепочки T1–T4) с серверной базой Supabase
+// 2) Автоматическое слияние встроенной базы материалов с серверной базой Supabase
 // 3) Фильтрация по подкатегориям материалов, редкости (2★–5★) и кнопка синхронизации в Supabase для админа
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -75,7 +75,7 @@ const entryToForm = (e: BestiaryEntry): FormState => ({
   props: Object.entries(e.props ?? {}).map(([k, v]) => ({ k, v: String(v) })),
 });
 
-/* Курируемые обложки и описания для главных полок Бестиария (вместо растянутых одиночных иконок) */
+/* Курируемые обложки и описания для главных полок Бестиария */
 const CATEGORY_META: Record<
   string,
   {
@@ -88,7 +88,8 @@ const CATEGORY_META: Record<
   }
 > = {
   Материалы: {
-    subtitle: 'Боссы вознесения, диковинки Соларис-3, еженедельные трофеи Форте, руда и ядра врагов (патч 3.7)',
+    subtitle:
+      'Боссы вознесения, диковинки Соларис-3, еженедельные трофеи Форте, руда и ядра врагов (патч 3.7)',
     bannerGrad: 'from-amber-500/25 via-[#1c1610] to-[#0a0b10]',
     borderGlow: 'hover:border-amber-400/50',
     accentText: 'text-amber-300',
@@ -97,7 +98,8 @@ const CATEGORY_META: Record<
       'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=900&q=80',
   },
   Оружие: {
-    subtitle: 'Сигнатурные и альтернативные клинки, тяжёлые мечи, пистолеты, перчатки и резонаторы',
+    subtitle:
+      'Сигнатурные и альтернативные клинки, тяжёлые мечи, пистолеты, перчатки и резонаторы',
     bannerGrad: 'from-rose-500/25 via-[#1f1018] to-[#0a0b10]',
     borderGlow: 'hover:border-rose-400/50',
     accentText: 'text-rose-300',
@@ -106,7 +108,8 @@ const CATEGORY_META: Record<
       'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=900&q=80',
   },
   Эхо: {
-    subtitle: 'Поглощённые частоты Тасет-дискордов (Cost 4 / 3 / 1) и сонатные эффекты сетов',
+    subtitle:
+      'Поглощённые частоты Тасет-дискордов (Cost 4 / 3 / 1) и сонатные эффекты сетов',
     bannerGrad: 'from-cyan-500/25 via-[#0e1b26] to-[#0a0b10]',
     borderGlow: 'hover:border-cyan-400/50',
     accentText: 'text-cyan-300',
@@ -115,7 +118,8 @@ const CATEGORY_META: Record<
       'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=900&q=80',
   },
   Враги: {
-    subtitle: 'Мировые боссы, элитные Тасет-дискорды, Фрацидус и противники Голограмм',
+    subtitle:
+      'Мировые боссы, элитные Тасет-дискорды, Фрацидус и противники Голограмм',
     bannerGrad: 'from-purple-500/25 via-[#191129] to-[#0a0b10]',
     borderGlow: 'hover:border-purple-400/50',
     accentText: 'text-purple-300',
@@ -148,7 +152,7 @@ const RARITY_SLOT_STYLE: Record<number, { bg: string; border: string; badge: str
   },
 };
 
-/* Иконка предмета в слоте инвентаря (object-contain, без уродливой обрезки краёв) */
+/* Иконка предмета в слоте инвентаря (object-contain, без обрезки краёв) */
 const BestiaryItemIcon = ({
   entry,
   size = 'md',
@@ -159,8 +163,7 @@ const BestiaryItemIcon = ({
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [entry.image]);
 
-  const rStyle =
-    RARITY_SLOT_STYLE[entry.rarity ?? 4] ?? RARITY_SLOT_STYLE[4];
+  const rStyle = RARITY_SLOT_STYLE[entry.rarity ?? 4] ?? RARITY_SLOT_STYLE[4];
   const dims =
     size === 'lg'
       ? 'w-24 h-24 rounded-2xl p-3'
@@ -217,13 +220,11 @@ export const BestiaryPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Режим просмотра: 'shelves' (полки категорий) или конкретная открытая категория
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [subFilter, setSubFilter] = useState<string>('all');
   const [rarityFilter, setRarityFilter] = useState<'all' | 5 | 4 | 3 | 2>('all');
   const [search, setSearch] = useState('');
 
-  // Модалки просмотра и редактирования
   const [detail, setDetail] = useState<BestiaryEntry | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -271,9 +272,10 @@ export const BestiaryPage = () => {
       list.push(item);
       map.set(item.category, list);
     }
-    // Гарантируем порядок ключевых полок
     const order = ['Материалы', 'Оружие', 'Эхо', 'Враги'];
-    const keys = [...new Set([...order, ...map.keys()])].filter((k) => (map.get(k)?.length ?? 0) > 0);
+    const keys = [...new Set([...order, ...map.keys()])].filter(
+      (k) => (map.get(k)?.length ?? 0) > 0,
+    );
     return keys.map((cat) => {
       const items = map.get(cat) ?? [];
       const fives = items.filter((i) => i.rarity === 5).length;
@@ -311,7 +313,6 @@ export const BestiaryPage = () => {
     });
   }, [allEntries, activeCategory, rarityFilter, subFilter, search]);
 
-  // Кнопка для админа: выгрузить встроенный каталог материалов в БД Supabase
   const syncMaterialsToSupabase = async () => {
     if (!token || !isAdmin) return;
     setBusy(true);
@@ -376,7 +377,6 @@ export const BestiaryPage = () => {
     };
     try {
       if (form.id === null || form.id >= 9000) {
-        // Если это новая запись или редактирование встроенной — сохраняем в Supabase
         await apiCreateBestiary(token, payload);
       } else {
         await apiUpdateBestiary(token, form.id, payload);
@@ -393,7 +393,9 @@ export const BestiaryPage = () => {
   const removeEntry = async (id: number) => {
     if (!token) return;
     if (id >= 9000) {
-      window.alert('Это встроенный материал базового каталога. Ты можешь переопределить его через «Изменить».');
+      window.alert(
+        'Это встроенный материал базового каталога. Ты можешь переопределить его через «Изменить».',
+      );
       return;
     }
     if (!window.confirm('Удалить запись из базы? Это необратимо.')) return;
@@ -428,6 +430,12 @@ export const BestiaryPage = () => {
           <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.2em] text-accent-light mb-1">
             <Sparkles size={13} />
             <span>БАЗА ДАННЫХ СОЛАРИС-3 · ПАТЧ 3.7</span>
+            {loading && (
+              <RefreshCw
+                size={12}
+                className="animate-spin text-accent-light ml-1"
+              />
+            )}
           </div>
           <div className="flex items-center gap-3">
             {activeCategory && (
@@ -540,7 +548,6 @@ export const BestiaryPage = () => {
             )}
           </div>
 
-          {/* Быстрые вкладки категорий */}
           <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
@@ -577,7 +584,6 @@ export const BestiaryPage = () => {
           </div>
         </div>
 
-        {/* Подкатегории материалов и фильтр редкости (показываются внутри категории или при поиске) */}
         {(activeCategory !== null || search.trim().length > 0) && (
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10">
             {activeCategory === 'Материалы' ? (
@@ -604,7 +610,6 @@ export const BestiaryPage = () => {
               </div>
             )}
 
-            {/* Фильтр по редкости */}
             <div className="flex items-center gap-1.5">
               {(['all', 5, 4, 3, 2] as const).map((r) => (
                 <button
@@ -625,7 +630,7 @@ export const BestiaryPage = () => {
         )}
       </div>
 
-      {/* ==================== РЕЖИМ 1: ВИТРИНА ПОЛОК КАТЕГОРИЙ (если не выбрана категория и пустой поиск) ==================== */}
+      {/* ==================== РЕЖИМ 1: ВИТРИНА ПОЛОК КАТЕГОРИЙ ==================== */}
       {activeCategory === null && search.trim().length === 0 ? (
         <div className="space-y-7">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -648,7 +653,6 @@ export const BestiaryPage = () => {
                   onClick={() => setActiveCategory(sh.category)}
                   className={`group relative rounded-3xl overflow-hidden border border-white/12 bg-[#0b0d14] text-left transition-all duration-300 hover:-translate-y-1 shadow-[0_20px_55px_rgba(0,0,0,0.75)] ${meta.borderGlow} focus-ring`}
                 >
-                  {/* Фоновый широкоформатный арт полки */}
                   <div className="relative h-56 sm:h-64 w-full overflow-hidden">
                     <img
                       src={meta.coverArt}
@@ -661,7 +665,6 @@ export const BestiaryPage = () => {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0b0d14] via-[#0b0d14]/65 to-transparent" />
 
-                    {/* Верхняя строка полки: значок + счётчик предметов */}
                     <div className="absolute top-4 left-5 right-5 flex items-center justify-between gap-2">
                       <span
                         className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/15 text-xs font-extrabold ${meta.accentText}`}
@@ -675,7 +678,6 @@ export const BestiaryPage = () => {
                       </span>
                     </div>
 
-                    {/* Плавающая мини-витрина из 4 иконок этой категории (без обрезки!) */}
                     <div className="absolute bottom-4 right-5 hidden sm:flex items-center -space-x-2">
                       {sh.samples.map((samp) => (
                         <div
@@ -698,7 +700,6 @@ export const BestiaryPage = () => {
                       ))}
                     </div>
 
-                    {/* Название полки и описание */}
                     <div className="absolute bottom-4 left-5 right-5 sm:right-48">
                       <h2 className="text-2xl sm:text-3xl font-black text-white group-hover:text-accent-light transition-colors">
                         {sh.category}
@@ -709,7 +710,6 @@ export const BestiaryPage = () => {
                     </div>
                   </div>
 
-                  {/* Нижняя полоса полки со статистикой редкости */}
                   <div className="px-5 py-3.5 bg-[#0e1018] border-t border-white/[0.08] flex items-center justify-between text-xs">
                     <div className="flex items-center gap-3">
                       {sh.fives > 0 && (
