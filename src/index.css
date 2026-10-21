@@ -55,7 +55,7 @@ html {
 }
 
 @layer components {
-  /* Многослойное люксовое стекло в едином стиле с LoginPage */
+  /* Многослойное люксовое стекло со спекулярным бликом сверху */
   .glass-panel {
     @apply bg-glass backdrop-blur-2xl border border-glass-border rounded-2xl shadow-glass relative;
     background-color: rgba(11, 13, 20, 0.58);
@@ -69,16 +69,41 @@ html {
       0 22px 55px rgba(0, 0, 0, 0.65),
       inset 0 1px 0 0 rgba(247, 236, 230, 0.12);
   }
+
+  /* Интерактивная карточка с пружинным подъёмом и голографическим лучом при наведении */
   .glass-panel-hover {
-    @apply glass-panel hover:bg-glass-hover hover:border-accent/45 hover:shadow-glass-hover hover:-translate-y-1 transition-all duration-300 ease-out;
+    @apply glass-panel hover:bg-glass-hover hover:border-accent/50 hover:shadow-glass-hover hover:-translate-y-1.5 transition-all duration-300 ease-out;
+    overflow: hidden;
+  }
+  .glass-panel-hover::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -120%;
+    width: 65%;
+    height: 100%;
+    background: linear-gradient(
+      110deg,
+      transparent 0%,
+      rgba(247, 236, 230, 0.07) 45%,
+      rgb(var(--accent-light) / 0.14) 50%,
+      transparent 100%
+    );
+    transform: skewX(-20deg);
+    transition: left 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: none;
+  }
+  .glass-panel-hover:hover::after {
+    left: 145%;
   }
   .glass-panel-hover:hover {
-    background-color: rgba(16, 19, 29, 0.72);
+    background-color: rgba(16, 19, 29, 0.75);
     box-shadow:
-      0 26px 60px rgba(0, 0, 0, 0.78),
-      0 0 26px rgb(var(--accent) / 0.18),
-      inset 0 1px 0 0 rgba(247, 236, 230, 0.24);
+      0 26px 60px rgba(0, 0, 0, 0.8),
+      0 0 28px rgb(var(--accent) / 0.22),
+      inset 0 1px 0 0 rgba(247, 236, 230, 0.28);
   }
+
   /* Декоративная золотая линия-акцент сверху карточки */
   .solaris-crest {
     position: relative;
@@ -100,7 +125,7 @@ html {
     @apply bg-gradient-to-r from-accent-light to-accent bg-clip-text text-transparent;
   }
   .btn-luxury {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent via-accent-light to-ivory text-bg font-bold text-sm shadow-glow-sm hover:shadow-glow hover:brightness-105 active:scale-[0.98] transition-all duration-200;
+    @apply relative overflow-hidden inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent via-accent-light to-ivory text-bg font-bold text-sm shadow-glow-sm hover:shadow-glow hover:brightness-105 active:scale-[0.98] transition-all duration-200;
   }
   .chip-glass {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0b0d14]/65 border border-white/15 text-xs text-ivory/90 backdrop-blur-md shadow-sm;
@@ -110,7 +135,7 @@ html {
   }
 }
 
-/* Единая стилизация плавающего сайдбара и инпутов под карточку логина */
+/* Единая стилизация плавающего сайдбара и инпутов */
 aside {
   background-color: rgba(11, 13, 20, 0.65) !important;
   box-shadow:
@@ -129,6 +154,19 @@ select:focus,
 textarea:focus {
   border-color: rgb(var(--accent) / 0.55);
   box-shadow: 0 0 20px rgb(var(--accent) / 0.12);
+}
+
+/* Плавная микродинамика кнопок */
+button:not(:disabled) {
+  transition:
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.22s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+button:not(:disabled):active {
+  transform: scale(0.97);
 }
 
 @layer utilities {
@@ -203,33 +241,54 @@ input[type='range']::-webkit-slider-thumb:hover {
   }
 }
 
-/* ---------- Появление ---------- */
+/* ---------- Появление страниц и секций ---------- */
 @keyframes fadeIn {
   from {
     opacity: 0;
+    transform: translateY(10px);
+    filter: blur(4px);
   }
   to {
     opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
   }
 }
 @keyframes slideUp {
   from {
-    transform: translateY(16px);
+    transform: translateY(18px) scale(0.985);
     opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
     opacity: 1;
   }
 }
 .animate-fade-in {
-  animation: fadeIn 0.28s ease-out;
+  animation: fadeIn 0.36s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .animate-slide-up {
-  animation: slideUp 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slideUp 0.36s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ---------- Живой фон ---------- */
+/* Каскадное появление дочерних блоков на страницах */
+main > div > div > * {
+  animation: slideUp 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+main > div > div > *:nth-child(1) {
+  animation-delay: 0.02s;
+}
+main > div > div > *:nth-child(2) {
+  animation-delay: 0.07s;
+}
+main > div > div > *:nth-child(3) {
+  animation-delay: 0.12s;
+}
+main > div > div > *:nth-child(4) {
+  animation-delay: 0.16s;
+}
+
+/* ---------- Живой фон: Туманности, Лучи, Пыль, Кометы и Искры ---------- */
 @keyframes auroraDrift {
   0% {
     transform: translate3d(0, 0, 0) scale(1);
@@ -250,7 +309,7 @@ input[type='range']::-webkit-slider-thumb:hover {
 @keyframes rayShimmer {
   0%,
   100% {
-    opacity: 0.45;
+    opacity: 0.4;
   }
   50% {
     opacity: 0.95;
@@ -266,7 +325,7 @@ input[type='range']::-webkit-slider-thumb:hover {
   background-repeat: repeat;
 }
 .dust-a {
-  background-image: radial-gradient(rgba(230, 201, 168, 0.38) 1px, transparent 1.5px);
+  background-image: radial-gradient(rgba(230, 201, 168, 0.4) 1px, transparent 1.5px);
   background-size: 110px 110px;
   animation: dustFloat 60s linear infinite;
   opacity: 0.32;
@@ -285,6 +344,88 @@ input[type='range']::-webkit-slider-thumb:hover {
     background-position: 220px -440px;
   }
 }
+
+/* Восходящие золотые искры Тасет-поля */
+@keyframes emberRise {
+  0% {
+    transform: translate3d(0, 105vh, 0) scale(0.6);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.75;
+  }
+  80% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate3d(-40px, -10vh, 0) scale(1.25);
+    opacity: 0;
+  }
+}
+.ww-ember {
+  position: absolute;
+  top: 0;
+  border-radius: 9999px;
+  background: rgb(var(--accent-light));
+  box-shadow: 0 0 12px rgb(var(--accent-light)), 0 0 24px rgb(var(--accent));
+  animation-name: emberRise;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+/* Падающие кометы (Resonance Meteors) */
+@keyframes meteorShower {
+  0% {
+    transform: rotate(-35deg) translateX(0);
+    opacity: 0;
+  }
+  6% {
+    opacity: 0.9;
+  }
+  18% {
+    transform: rotate(-35deg) translateX(-560px);
+    opacity: 0;
+  }
+  100% {
+    transform: rotate(-35deg) translateX(-560px);
+    opacity: 0;
+  }
+}
+.ww-meteor {
+  position: absolute;
+  width: 150px;
+  height: 1.5px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 247, 237, 0.95),
+    rgb(var(--accent-light) / 0.5),
+    transparent
+  );
+  border-radius: 999px;
+  filter: drop-shadow(0 0 6px rgb(var(--accent-light)));
+  opacity: 0;
+  animation-name: meteorShower;
+  animation-timing-function: ease-out;
+  animation-iteration-count: infinite;
+}
+
+/* Пульсация частотной волны Резонанса */
+@keyframes wavePulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scaleY(0.92);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scaleY(1.08);
+  }
+}
+.ww-wave-pulse {
+  transform-origin: bottom center;
+  animation: wavePulse 7s ease-in-out infinite;
+}
+
 .noise {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
   opacity: 0.045;
@@ -298,10 +439,10 @@ input[type='range']::-webkit-slider-thumb:hover {
 .solaris-grid {
   background-size: 64px 64px;
   background-image:
-    linear-gradient(to right, rgba(247, 236, 230, 0.022) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(247, 236, 230, 0.022) 1px, transparent 1px);
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 20%, transparent 100%);
-  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 20%, transparent 100%);
+    linear-gradient(to right, rgba(247, 236, 230, 0.024) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(247, 236, 230, 0.024) 1px, transparent 1px);
+  mask-image: radial-gradient(ellipse 75% 65% at 50% 32%, black 25%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 32%, black 25%, transparent 100%);
 }
 
 @media (max-width: 640px) {
@@ -313,6 +454,15 @@ input[type='range']::-webkit-slider-thumb:hover {
   .vignette {
     background: radial-gradient(ellipse at 50% 40%, transparent 68%, rgba(5, 5, 7, 0.38) 100%);
   }
+}
+
+/* Отключение тяжёлых анимаций при включении настройки Reduce Motion */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }
 
 /* ---------- Leaflet: тёмная тема + акцентная кнопка в попапах ---------- */
