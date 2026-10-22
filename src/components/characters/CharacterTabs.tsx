@@ -6,6 +6,7 @@ import { ImagePlaceholder } from '../ui/ImagePlaceholder';
 import { LORE } from '../../data/lore';
 import { TEAM_ROTATIONS } from '../../data/teamRotations';
 import { BuildSharer } from './BuildSharer';
+import { useState } from 'react';
 import { getCharacterTheme, TIER_STYLES } from '../../utils/constants';
 import type { Character, TargetStat, SkillPriority } from '../../data/types';
 
@@ -605,6 +606,45 @@ export const ProgressTab = ({ char }: { char: Character }) => {
           </p>
         )}
       </div>
+    </div>
+  );
+};
+/* ========== ОБЁРТКА: ПЕРЕКЛЮЧАТЕЛЬ ВКЛАДОК ========== */
+type TabId = 'info' | 'meta' | 'build' | 'teams' | 'progress';
+
+const TAB_LIST: { id: TabId; label: string }[] = [
+  { id: 'info', label: 'Инфо' },
+  { id: 'meta', label: 'Мета' },
+  { id: 'build', label: 'Билд' },
+  { id: 'teams', label: 'Команды' },
+  { id: 'progress', label: 'Прокачка' },
+];
+
+export const CharacterTabs = ({ character }: { character: Character }) => {
+  const [active, setActive] = useState<TabId>('info');
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap gap-2 p-1.5 rounded-2xl bg-glass border border-glass-border">
+        {TAB_LIST.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setActive(t.id)}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors focus-ring ${
+              active === t.id
+                ? 'bg-accent/20 border border-accent/40 text-accent-light'
+                : 'border border-transparent text-gray-400 hover:text-ivory'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {active === 'info' && <InfoTab char={character} />}
+      {active === 'meta' && <MetaTab char={character} />}
+      {active === 'build' && <BuildTab char={character} />}
+      {active === 'teams' && <TeamsTab char={character} />}
+      {active === 'progress' && <ProgressTab char={character} />}
     </div>
   );
 };
