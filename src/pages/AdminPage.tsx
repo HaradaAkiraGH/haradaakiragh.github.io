@@ -1,8 +1,9 @@
 // Командный центр Администратора Stellar Wiki (Solaris-3 Root Terminal):
-// 1) Создание карточек новых персонажей с живым превью и загрузкой арта
-// 2) Визуальный конструктор существующих и новых героев (без ручного JSON)
-// 3) Управление Бестиарием (163 материала + оружие + эхо + враги)
-// 4) CMS для Новостей и Гайдов + Полный экспорт/импорт базы
+// 1) Поддержка загрузки 3 отдельных картинок для каждого персонажа:
+//    - Большая карточка (Скрин 1, вертикальная для каталога)
+//    - Маленькая иконка (Скрин 2, квадратная для Меты и мини-слотов)
+//    - Горизонтальный арт (Скрин 3, широкая для внутренней страницы персонажа)
+// 2) Визуальный конструктор героев, Бестиарий (163 материала) и CMS
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -28,13 +29,11 @@ import {
   Download,
   CloudUpload,
   X,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { CHARACTERS } from '../data/characters';
 import { IMAGES } from '../data/images';
-import {
-  ELEMENTS,
-  WEAPON_LABELS,
-} from '../utils/constants';
+import { ELEMENTS, WEAPON_LABELS } from '../utils/constants';
 import type {
   ElementType,
   WeaponType,
@@ -58,7 +57,10 @@ import {
   getLocalCharOverrides,
   saveLocalCharOverride,
   removeLocalCharOverride,
-  saveCustomCharacterImage,
+  getCharacterArtUrls,
+  saveCharacterArtBundle,
+  CHARACTER_ICONS,
+  CHARACTER_SPLASHES,
   syncAdminContentToRuntime,
   getAdminNews,
   saveAdminNews,
@@ -84,7 +86,6 @@ const ROLES: CharacterRole[] = [
 ];
 const TIERS: TierRank[] = ['S', 'A', 'B', 'C', '-'];
 
-/* Транслитерация и генерация чистого ID (slug) из имени персонажа */
 function slugifyName(input: string): string {
   return input
     .toLowerCase()
@@ -93,8 +94,7 @@ function slugifyName(input: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-/* Сжатие загружаемого с ПК арта карточки через Canvas */
-function compressCardArt(file: File, maxW = 720, maxH = 1080): Promise<string> {
+function compressImage(file: File, maxW: number, maxH: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -233,24 +233,230 @@ const inputCls =
 const labelCls =
   'block text-[11px] font-extrabold uppercase tracking-wider text-gray-400 mb-1.5';
 
+/* Универсальный блок загрузки всех 3 форматов артов персонажа (Скрин 1, Скрин 2, Скрин 3) */
+const TripleArtUploader = ({
+  cardUrl,
+  iconUrl,
+  splashUrl,
+  onChangeCard,
+  onChangeIcon,
+  onChangeSplash,
+}: {
+  cardUrl: string;
+  iconUrl: string;
+  splashUrl: string;
+  onChangeCard: (url: string) => void;
+  onChangeIcon: (url: string) => void;
+  onChangeSplash: (url: string) => void;
+}) => {
+  const cardInputRef = useRef<HTMLInputElement | null>(null);
+  const iconInputRef = useRef<HTMLInputElement | null>(null);
+  const splashInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFile = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    maxW: number,
+    maxH: number,
+    cb: (url: string) => void,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await compressImage(file, maxW, maxH);
+      cb(dataUrl);
+    } catch {
+      // игнорируем
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-accent-light">
+        <ImageIcon size={15} />
+        <span>3 формата графики персонажа (Каталог · Мета-иконка · Горизонтальный баннер)</span>
+      </div>
+
+      <input
+        ref={cardInputRef}
+        type="file"
+        accept="image/*"
+        onChange={(e) => handleFile(e, 720, 1080, onChangeCard)}
+        className="hidden"
+      />
+      <input
+        ref={iconInputRef}
+        type="file"
+        accept="image/*"
+        onChange={(e) => handleFile(e, 320, 320, onChangeIcon)}
+        className="hidden"
+      />
+      <input
+        ref={splashInputRef}
+        type="file"
+        accept="image/*"
+        onChange={(e) => handleFile(e, 1400, 780, onChangeSplash)}
+        className="hidden"
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* 1. БОЛЬШАЯ ВЕРТИКАЛЬНАЯ КАРТОЧКА (Скрин 1) */}
+        <div className="p-4 rounded-2xl bg-black/45 border border-white/[0.08] flex flex-col justify-between gap-3">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <span className="text-xs font-extrabold text-white block">
+                1. Большая карточка (3:4.5)
+              </span>
+              <span className="text-[11px] text-gray-400">
+                Для каталога персонажей `/characters`
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => cardInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] text-[11px] font-extrabold shrink-0 cursor-pointer"
+            >
+              <Upload size={12} />
+              <span>Файл</span>
+            </button>
+          </div>
+
+          <div className="h-36 rounded-xl overflow-hidden bg-[#090a10] border border-white/10 flex items-center justify-center">
+            {cardUrl ? (
+              <img
+                src={cardUrl}
+                alt="Card preview"
+                className="h-full w-auto object-cover"
+              />
+            ) : (
+              <span className="text-xs text-gray-600">Нет вертикальной карточки</span>
+            )}
+          </div>
+
+          <input
+            type="text"
+            value={cardUrl}
+            onChange={(e) => onChangeCard(e.target.value)}
+            placeholder="URL вертикальной карточки..."
+            className={inputCls}
+          />
+        </div>
+
+        {/* 2. МАЛЕНЬКАЯ КВАДРАТНАЯ ИКОНКА (Скрин 2) */}
+        <div className="p-4 rounded-2xl bg-black/45 border border-white/[0.08] flex flex-col justify-between gap-3">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <span className="text-xs font-extrabold text-amber-300 block">
+                2. Маленькая иконка (1:1)
+              </span>
+              <span className="text-[11px] text-gray-400">
+                Для Меты `/meta`, круток и мини-слотов
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => iconInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 text-[#09090b] text-[11px] font-extrabold shrink-0 cursor-pointer"
+            >
+              <Upload size={12} />
+              <span>Файл</span>
+            </button>
+          </div>
+
+          <div className="h-36 rounded-xl bg-[#090a10] border border-white/10 flex items-center justify-center p-2">
+            <div className="relative w-24 h-24 aspect-square bg-[#c3a548] border-b-[3px] border-[#d6b95c] overflow-hidden shadow-lg">
+              {iconUrl || cardUrl ? (
+                <img
+                  src={iconUrl || cardUrl}
+                  alt="Icon preview"
+                  className="w-full h-full object-cover object-top"
+                />
+              ) : (
+                <span className="text-[10px] text-black font-bold flex items-center justify-center h-full">
+                  1:1 ICON
+                </span>
+              )}
+              <span className="absolute bottom-0 right-0 px-1.5 py-[1px] bg-[#c3a548] text-[#09090b] text-[10px] font-black">
+                S0
+              </span>
+            </div>
+          </div>
+
+          <input
+            type="text"
+            value={iconUrl}
+            onChange={(e) => onChangeIcon(e.target.value)}
+            placeholder="URL маленькой квадратной иконки..."
+            className={inputCls}
+          />
+        </div>
+
+        {/* 3. ГОРИЗОНТАЛЬНЫЙ АРТ / БАННЕР (Скрин 3) */}
+        <div className="p-4 rounded-2xl bg-black/45 border border-white/[0.08] flex flex-col justify-between gap-3">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <span className="text-xs font-extrabold text-cyan-300 block">
+                3. Горизонтальный арт (16:9)
+              </span>
+              <span className="text-[11px] text-gray-400">
+                Для внутренней карточки `/characters/:id`
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => splashInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-400 text-[#09090b] text-[11px] font-extrabold shrink-0 cursor-pointer"
+            >
+              <Upload size={12} />
+              <span>Файл</span>
+            </button>
+          </div>
+
+          <div className="h-36 rounded-xl overflow-hidden bg-[#090a10] border border-white/10 flex items-center justify-center relative">
+            {splashUrl || cardUrl ? (
+              <>
+                <img
+                  src={splashUrl || cardUrl}
+                  alt="Splash preview"
+                  className="w-full h-full object-cover object-center"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/30 to-black/80 flex items-end p-3">
+                  <span className="text-[10px] font-bold text-white/90">
+                    Внутренний баннер героя
+                  </span>
+                </div>
+              </>
+            ) : (
+              <span className="text-xs text-gray-600">Нет горизонтального арта</span>
+            )}
+          </div>
+
+          <input
+            type="text"
+            value={splashUrl}
+            onChange={(e) => onChangeSplash(e.target.value)}
+            placeholder="URL горизонтального арта..."
+            className={inputCls}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const AdminPage = () => {
   useDocumentMeta({
     title: 'Root-Терминал Администратора — Stellar Wiki',
     description:
-      'Панель управления Stellar Wiki: добавление новых персонажей, визуальный редактор билдов, Бестиарий и CMS.',
+      'Панель управления Stellar Wiki: 3 формата карточек персонажей, конструктор билдов, Бестиарий и CMS.',
   });
 
   const { token, user } = useAuth();
 
-  // Главные разделы Админки
   const [mainTab, setMainTab] = useState<
     'create-char' | 'edit-char' | 'bestiary' | 'cms' | 'database'
   >('create-char');
 
-  // Принудительный тик для обновления списков после сохранения
   const [refreshTick, setRefreshTick] = useState(0);
-
-  // Статусные сообщения
   const [statusMsg, setStatusMsg] = useState<{
     type: 'ok' | 'err';
     text: string;
@@ -264,9 +470,10 @@ export const AdminPage = () => {
 
   /* ==================== СОСТОЯНИЕ ВКЛАДКИ 1: СОЗДАНИЕ НОВОГО ПЕРСОНАЖА ==================== */
   const [newChar, setNewChar] = useState<any>(() => createEmptyCharacter());
-  const [newCharArtUrl, setNewCharArtUrl] = useState<string>('/images/Camellya_Card.webp');
+  const [newCardUrl, setNewCardUrl] = useState<string>('/images/Camellya_Card.webp');
+  const [newIconUrl, setNewIconUrl] = useState<string>('');
+  const [newSplashUrl, setNewSplashUrl] = useState<string>('');
   const [autoSlug, setAutoSlug] = useState(true);
-  const newCharFileRef = useRef<HTMLInputElement | null>(null);
 
   /* ==================== СОСТОЯНИЕ ВКЛАДКИ 2: РЕДАКТОР СУЩЕСТВУЮЩИХ И НОВЫХ ГЕРОЕВ ==================== */
   const [charSearch, setCharSearch] = useState('');
@@ -280,13 +487,11 @@ export const AdminPage = () => {
   const [draftChar, setDraftChar] = useState<any>(() =>
     JSON.parse(JSON.stringify(CHARACTERS[0] ?? createEmptyCharacter())),
   );
-  const [draftArtUrl, setDraftArtUrl] = useState<string>(
-    IMAGES[CHARACTERS[0]?.id ?? 'camellya'] ?? '',
-  );
+  const [draftCardUrl, setDraftCardUrl] = useState<string>('');
+  const [draftIconUrl, setDraftIconUrl] = useState<string>('');
+  const [draftSplashUrl, setDraftSplashUrl] = useState<string>('');
   const [rawJsonText, setRawJsonText] = useState<string>('');
-  const editCharFileRef = useRef<HTMLInputElement | null>(null);
 
-  // Серверные оверрайды
   const [serverEdits, setServerEdits] = useState<
     Record<string, Record<string, unknown>>
   >({});
@@ -321,13 +526,20 @@ export const AdminPage = () => {
     content: '',
   });
 
-  // Загрузка данных с сервера при открытии админки
   useEffect(() => {
     apiGetCharacterOverrides()
       .then((r: any) => {
-        const edits = (r.edits ?? {}) as Record<string, Record<string, unknown>>;
-        setServerEdits(edits);
-        syncAdminContentToRuntime(edits);
+        const map: Record<string, Record<string, unknown>> = {};
+        if (Array.isArray(r?.overrides)) {
+          for (const item of r.overrides) {
+            const cid = item.characterId || item.character_id || item.id;
+            if (cid) map[cid] = item.data || item.patch || item;
+          }
+        } else if (r?.edits) {
+          Object.assign(map, r.edits);
+        }
+        setServerEdits(map);
+        syncAdminContentToRuntime(map);
         setRefreshTick((t: number) => t + 1);
       })
       .catch((_: any) => {});
@@ -337,17 +549,19 @@ export const AdminPage = () => {
       .catch((_: any) => {});
   }, []);
 
-  // При переключении выбранного персонажа в редакторе — загружаем его актуальные данные
+  // Загружаем данные и все 3 картинки при выборе персонажа в редакторе
   useEffect(() => {
     const found = CHARACTERS.find((c) => c.id === selectedCharId);
     if (!found) return;
     const cloned = JSON.parse(JSON.stringify(found)) as any;
+    const artBundle = getCharacterArtUrls(found.id);
     setDraftChar(cloned);
-    setDraftArtUrl(IMAGES[found.id] ?? '');
+    setDraftCardUrl(artBundle.card);
+    setDraftIconUrl(artBundle.icon);
+    setDraftSplashUrl(artBundle.splash);
     setRawJsonText(JSON.stringify(cloned, null, 2));
   }, [selectedCharId, refreshTick]);
 
-  // Метрики для верхней панели телеметрии
   const customCharsList = useMemo(() => getCustomCharacters(), [refreshTick]);
   const localOverridesMap = useMemo(() => getLocalCharOverrides(), [refreshTick]);
   const allBestiaryMerged = useMemo(() => {
@@ -359,17 +573,6 @@ export const AdminPage = () => {
   const handleNewCharNameChange = (name: string) => {
     const nextId = autoSlug ? slugifyName(name) || 'new-resonator' : newChar.id;
     setNewChar((prev: any) => ({ ...prev, name, id: nextId }));
-  };
-
-  const handleUploadNewCharArt = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const dataUrl = await compressCardArt(file);
-      setNewCharArtUrl(dataUrl);
-    } catch {
-      notify('err', 'Не удалось обработать изображение');
-    }
   };
 
   const handleCreateNewCharacter = async () => {
@@ -388,20 +591,24 @@ export const AdminPage = () => {
         title: newChar.title.trim() || 'Резонатор Соларис-3',
       };
 
-      // 1. Сохраняем картинку карточки
-      if (newCharArtUrl.trim()) {
-        saveCustomCharacterImage(cleanId, newCharArtUrl.trim());
-      }
+      // 1. Сохраняем все 3 формата картинок (card, icon, splash)
+      saveCharacterArtBundle(cleanId, {
+        card: newCardUrl.trim(),
+        icon: newIconUrl.trim(),
+        splash: newSplashUrl.trim(),
+      });
 
       // 2. Сохраняем в список кастомных персонажей и инжектируем в CHARACTERS
       const existingCustom = getCustomCharacters().filter((c) => c.id !== cleanId);
       saveCustomCharacters([finalChar, ...existingCustom]);
 
-      // 3. Сохраняем в Supabase (в таблицу character_overrides с полем __cardImage)
+      // 3. Сохраняем в Supabase вместе с 3 полями картинок
       if (token) {
         await apiSaveCharacterOverride(token, cleanId, {
           ...(finalChar as unknown as Record<string, unknown>),
-          __cardImage: newCharArtUrl.trim(),
+          __cardImage: newCardUrl.trim(),
+          __iconImage: newIconUrl.trim(),
+          __splashImage: newSplashUrl.trim(),
           __isCustomCharacter: true,
         });
       }
@@ -410,9 +617,11 @@ export const AdminPage = () => {
       setSelectedCharId(cleanId);
       notify(
         'ok',
-        `Персонаж «${finalChar.name}» создан и добавлен в каталог сайта!`,
+        `Персонаж «${finalChar.name}» и все 3 формата его карточек добавлены на сайт!`,
       );
       setNewChar(createEmptyCharacter());
+      setNewIconUrl('');
+      setNewSplashUrl('');
     } catch (e: any) {
       notify(
         'err',
@@ -426,17 +635,6 @@ export const AdminPage = () => {
   };
 
   /* ==================== ОБРАБОТЧИКИ ВКЛАДКИ 2: ВИЗУАЛЬНЫЙ РЕДАКТОР ГЕРОЕВ ==================== */
-  const handleUploadEditCharArt = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const dataUrl = await compressCardArt(file);
-      setDraftArtUrl(dataUrl);
-    } catch {
-      notify('err', 'Ошибка чтения файла');
-    }
-  };
-
   const handleSaveEditedCharacter = async () => {
     setBusy(true);
     try {
@@ -451,13 +649,16 @@ export const AdminPage = () => {
         }
       }
 
-      // Сохраняем обновлённый арт карточки
-      saveCustomCharacterImage(toSave.id, draftArtUrl);
+      // 1. Сохраняем все 3 формата картинок персонажа
+      saveCharacterArtBundle(toSave.id, {
+        card: draftCardUrl,
+        icon: draftIconUrl,
+        splash: draftSplashUrl,
+      });
 
-      // Сохраняем оверрайд локально и обновляем CHARACTERS
+      // 2. Сохраняем оверрайд локально
       saveLocalCharOverride(toSave.id, toSave);
 
-      // Если это кастомный персонаж — обновляем и его базовую запись
       const customList = getCustomCharacters();
       if (customList.some((c) => c.id === toSave.id)) {
         saveCustomCharacters(
@@ -465,11 +666,13 @@ export const AdminPage = () => {
         );
       }
 
-      // Отправляем в Supabase
+      // 3. Отправляем в Supabase вместе с 3 форматами картинок
       if (token) {
         await apiSaveCharacterOverride(token, toSave.id, {
           ...(toSave as unknown as Record<string, unknown>),
-          __cardImage: draftArtUrl,
+          __cardImage: draftCardUrl,
+          __iconImage: draftIconUrl,
+          __splashImage: draftSplashUrl,
         });
         setServerEdits((prev) => ({
           ...prev,
@@ -478,7 +681,10 @@ export const AdminPage = () => {
       }
 
       setRefreshTick((t) => t + 1);
-      notify('ok', `Все изменения для «${toSave.name}» успешно сохранены!`);
+      notify(
+        'ok',
+        `Все изменения и 3 формата картинок для «${toSave.name}» сохранены!`,
+      );
     } catch (e: any) {
       notify('err', e instanceof Error ? e.message : 'Ошибка сохранения');
     } finally {
@@ -497,7 +703,6 @@ export const AdminPage = () => {
     setBusy(true);
     try {
       removeLocalCharOverride(selectedCharId);
-      saveCustomCharacterImage(selectedCharId, '');
       if (token) {
         await apiDeleteCharacterOverride(token, selectedCharId).catch((_: any) => {});
       }
@@ -629,7 +834,6 @@ export const AdminPage = () => {
     saveAdminGuides(next);
   };
 
-  /* ==================== ОБРАБОТЧИК ВКЛАДКИ 5: ЭКСПОРТ БЭКАПА ==================== */
   const exportFullBackupJson = () => {
     const payload = {
       exportedAt: new Date().toISOString(),
@@ -661,17 +865,17 @@ export const AdminPage = () => {
     });
   }, [charSearch, charElFilter, refreshTick]);
 
-  // Живая карточка для превью нового персонажа
+  // Живая карточка для превью нового персонажа (синхронизирует все 3 формата для предпросмотра)
   const previewNewChar = useMemo<any>(() => {
     const previewId = slugifyName(newChar.id || newChar.name) || 'new-resonator';
-    if (newCharArtUrl) {
-      IMAGES[previewId] = newCharArtUrl;
-    }
+    if (newCardUrl) IMAGES[previewId] = newCardUrl;
+    if (newIconUrl) CHARACTER_ICONS[previewId] = newIconUrl;
+    if (newSplashUrl) CHARACTER_SPLASHES[previewId] = newSplashUrl;
     return {
       ...newChar,
       id: previewId,
     };
-  }, [newChar, newCharArtUrl]);
+  }, [newChar, newCardUrl, newIconUrl, newSplashUrl]);
 
   return (
     <div className="space-y-6 pb-12 w-full animate-fade-in">
@@ -680,22 +884,6 @@ export const AdminPage = () => {
           max-width: 1540px !important;
         }
       `}</style>
-
-      {/* Скрытые инпуты загрузки картинок с ПК */}
-      <input
-        ref={newCharFileRef}
-        type="file"
-        accept="image/*"
-        onChange={handleUploadNewCharArt}
-        className="hidden"
-      />
-      <input
-        ref={editCharFileRef}
-        type="file"
-        accept="image/*"
-        onChange={handleUploadEditCharArt}
-        className="hidden"
-      />
 
       {/* ==================== ШАПКА КОМАНДНОГО ЦЕНТРА АДМИНА ==================== */}
       <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-[#171310] via-[#10121c] to-[#0b0d14] p-6 sm:p-8 shadow-[0_25px_70px_rgba(0,0,0,0.85)] solaris-crest">
@@ -714,11 +902,10 @@ export const AdminPage = () => {
               Панель управления Stellar Wiki
             </h1>
             <p className="text-gray-400 text-sm mt-1">
-              Добавление новых карточек резонаторов, визуальный конструктор билдов, Бестиарий и CMS
+              Загрузка 3 форматов карточек персонажей (Каталог · Мета · Баннер), конструктор билдов и Бестиарий
             </p>
           </div>
 
-          {/* 4 плитки телеметрии */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 shrink-0">
             <div className="p-3.5 rounded-2xl bg-black/45 border border-white/[0.06] text-center min-w-[115px]">
               <span className="text-[10px] font-bold uppercase text-gray-400 block">
@@ -760,7 +947,6 @@ export const AdminPage = () => {
           </div>
         </div>
 
-        {/* Навигация по 5 модулям Админки */}
         <div className="relative z-10 flex flex-wrap gap-2 mt-6 pt-5 border-t border-white/[0.07]">
           {(
             [
@@ -778,7 +964,7 @@ export const AdminPage = () => {
                 key={tab.id}
                 type="button"
                 onClick={() => setMainTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all ${
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
                   active
                     ? 'bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] shadow-lg'
                     : 'bg-white/[0.05] hover:bg-white/[0.1] text-gray-300 hover:text-white'
@@ -792,7 +978,6 @@ export const AdminPage = () => {
         </div>
       </div>
 
-      {/* Всплывающее уведомление о результате операции */}
       {statusMsg && (
         <div
           className={`glass-panel px-5 py-3.5 flex items-center justify-between gap-3 border ${
@@ -820,7 +1005,7 @@ export const AdminPage = () => {
       )}
 
       {/* =================================================================================
-          МОДУЛЬ 1: СОЗДАНИЕ КАРТОЧКИ НОВОГО ПЕРСОНАЖА
+          МОДУЛЬ 1: СОЗДАНИЕ КАРТОЧКИ НОВОГО ПЕРСОНАЖА (С 3 ФОРМАТАМИ КАРТИНОК)
          ================================================================================= */}
       {mainTab === 'create-char' && (
         <div className="grid grid-cols-1 xl:grid-cols-[1fr,340px] gap-6 items-start">
@@ -832,12 +1017,11 @@ export const AdminPage = () => {
                   <span>Добавить нового резонатора в базу сайта</span>
                 </h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  После нажатия «Создать персонажа» карточка сразу появится в каталоге `/characters` и получит свою страницу `/characters/:id`
+                  Загрузи все 3 формата карточек (Большую вертикальную, Маленькую для Меты и Горизонтальную для страницы героя)
                 </p>
               </div>
             </div>
 
-            {/* Основные поля карточки */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <label className="block">
                 <span className={labelCls}>Имя персонажа (EN / RU)</span>
@@ -888,7 +1072,6 @@ export const AdminPage = () => {
               </label>
             </div>
 
-            {/* Стихия, Оружие, Редкость, Роль */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <label className="block">
                 <span className={labelCls}>Стихия</span>
@@ -959,31 +1142,16 @@ export const AdminPage = () => {
               </label>
             </div>
 
-            {/* Загрузка или ссылка на Арт карточки */}
-            <div className="p-4 rounded-2xl bg-black/40 border border-white/[0.08] space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-extrabold text-white">
-                  Арт карточки персонажа (вертикальный портрет)
-                </span>
-                <button
-                  type="button"
-                  onClick={() => newCharFileRef.current?.click()}
-                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] text-xs font-extrabold cursor-pointer"
-                >
-                  <Upload size={14} />
-                  <span>Загрузить файл с ПК</span>
-                </button>
-              </div>
-              <input
-                type="text"
-                value={newCharArtUrl}
-                onChange={(e) => setNewCharArtUrl(e.target.value)}
-                placeholder="Вставь ссылку на картинку (https://... или /images/...) либо загрузи файл выше"
-                className={inputCls}
-              />
-            </div>
+            {/* Блок загрузки всех 3 форматов картинок */}
+            <TripleArtUploader
+              cardUrl={newCardUrl}
+              iconUrl={newIconUrl}
+              splashUrl={newSplashUrl}
+              onChangeCard={setNewCardUrl}
+              onChangeIcon={setNewIconUrl}
+              onChangeSplash={setNewSplashUrl}
+            />
 
-            {/* Тиры и Базовые статы */}
             <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
               <label className="block">
                 <span className={labelCls}>Тир (Башня)</span>
@@ -1128,10 +1296,6 @@ export const AdminPage = () => {
             <div className="max-w-[250px] mx-auto">
               <CharacterCard character={previewNewChar} />
             </div>
-
-            <p className="text-[11px] text-gray-400 text-center leading-relaxed">
-              После создания ты сможешь детально настроить его оружие, эхо, навыки и созвездия во второй вкладке «Конструктор героев».
-            </p>
           </div>
         </div>
       )}
@@ -1141,7 +1305,7 @@ export const AdminPage = () => {
          ================================================================================= */}
       {mainTab === 'edit-char' && (
         <div className="grid grid-cols-1 lg:grid-cols-[300px,1fr] gap-6 items-start">
-          {/* Левая колонка: Выбор персонажа с поиском и иконками */}
+          {/* Левая колонка: Выбор персонажа */}
           <div className="glass-panel p-4 space-y-3">
             <div className="relative">
               <Search
@@ -1157,7 +1321,6 @@ export const AdminPage = () => {
               />
             </div>
 
-            {/* Быстрый фильтр по стихии */}
             <div className="flex flex-wrap gap-1">
               <button
                 type="button"
@@ -1185,7 +1348,6 @@ export const AdminPage = () => {
               ))}
             </div>
 
-            {/* Список персонажей */}
             <div className="space-y-1 max-h-[560px] overflow-y-auto pr-1">
               {filteredSidebarChars.map((c) => {
                 const isSelected = c.id === selectedCharId;
@@ -1208,7 +1370,8 @@ export const AdminPage = () => {
                       id={c.id}
                       initials={c.name.slice(0, 2)}
                       element={c.element}
-                      className="w-9 h-11 rounded-lg object-cover object-top shrink-0"
+                      variant="icon"
+                      className="w-9 h-9 aspect-square rounded-lg object-cover object-top shrink-0"
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-extrabold truncate">{c.name}</p>
@@ -1229,16 +1392,16 @@ export const AdminPage = () => {
             </div>
           </div>
 
-          {/* Правая колонка: Визуальный конструктор выбранного персонажа */}
+          {/* Правая колонка: Конструктор выбранного героя */}
           <div className="glass-panel p-6 space-y-6 min-w-0 animate-fade-in">
-            {/* Шапка выбранного героя + кнопки Сохранить / Сбросить / Открыть страницу */}
             <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
               <div className="flex items-center gap-3.5">
                 <ImagePlaceholder
                   id={draftChar.id}
                   initials={draftChar.name ? draftChar.name.slice(0, 2) : 'RE'}
                   element={draftChar.element}
-                  className="w-14 h-16 rounded-2xl object-cover object-top"
+                  variant="icon"
+                  className="w-14 h-14 aspect-square rounded-2xl object-cover object-top"
                 />
                 <div>
                   <div className="flex items-center gap-2">
@@ -1285,11 +1448,10 @@ export const AdminPage = () => {
               </div>
             </div>
 
-            {/* Переключатель 5 подвкладок конструктора */}
             <div className="flex flex-wrap gap-2">
               {(
                 [
-                  { id: 'general', label: '1. Основное и Арт' },
+                  { id: 'general', label: '1. Основное и 3 Арта' },
                   { id: 'gear', label: `2. Оружие (${draftChar.weapons?.length ?? 0}) и Эхо (${draftChar.echoSets?.length ?? 0})` },
                   { id: 'skills', label: `3. Навыки (${draftChar.skills?.length ?? 0}) и Цепи S1–S6` },
                   { id: 'teams', label: '4. Ротация, Команды и Ресурсы' },
@@ -1316,10 +1478,20 @@ export const AdminPage = () => {
               ))}
             </div>
 
-            {/* ПОДВКЛАДКА 1: ОСНОВНОЕ И АРТ */}
+            {/* ПОДВКЛАДКА 1: ОСНОВНОЕ И 3 ФОРМАТА КАРТИНОК */}
             {editorSubTab === 'general' && (
-              <div className="space-y-4 animate-fade-in">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-5 animate-fade-in">
+                {/* Загрузчик 3 форматов картинок для выбранного персонажа */}
+                <TripleArtUploader
+                  cardUrl={draftCardUrl}
+                  iconUrl={draftIconUrl}
+                  splashUrl={draftSplashUrl}
+                  onChangeCard={setDraftCardUrl}
+                  onChangeIcon={setDraftIconUrl}
+                  onChangeSplash={setDraftSplashUrl}
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-white/[0.08]">
                   <label className="block">
                     <span className={labelCls}>Имя персонажа</span>
                     <input
@@ -1480,29 +1652,6 @@ export const AdminPage = () => {
                   </label>
                 </div>
 
-                {/* Смена арта карточки */}
-                <div className="p-4 rounded-2xl bg-black/40 border border-white/[0.08] space-y-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-extrabold text-white">
-                      URL или файл вертикального арта карточки
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => editCharFileRef.current?.click()}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-ivory cursor-pointer"
-                    >
-                      <Upload size={13} />
-                      <span>Загрузить с ПК</span>
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    value={draftArtUrl ?? ''}
-                    onChange={(e) => setDraftArtUrl(e.target.value)}
-                    className={inputCls}
-                  />
-                </div>
-
                 <label className="block">
                   <span className={labelCls}>Лор и биография</span>
                   <textarea
@@ -1562,7 +1711,6 @@ export const AdminPage = () => {
             {/* ПОДВКЛАДКА 2: ОРУЖИЕ И ЭХО */}
             {editorSubTab === 'gear' && (
               <div className="space-y-6 animate-fade-in">
-                {/* Секция Оружия */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-black uppercase tracking-wider text-accent-light flex items-center gap-2">
@@ -1625,7 +1773,9 @@ export const AdminPage = () => {
                             onClick={() =>
                               setDraftChar({
                                 ...draftChar,
-                                weapons: draftChar.weapons.filter((_: any, i: number) => i !== idx),
+                                weapons: draftChar.weapons.filter(
+                                  (_: any, i: number) => i !== idx,
+                                ),
                               })
                             }
                             className="p-2 text-gray-500 hover:text-rose-400 cursor-pointer"
@@ -1648,7 +1798,6 @@ export const AdminPage = () => {
                   ))}
                 </div>
 
-                {/* Секция Эхо-наборов */}
                 <div className="space-y-3 pt-4 border-t border-white/[0.08]">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-black uppercase tracking-wider text-accent-light flex items-center gap-2">
@@ -1709,7 +1858,9 @@ export const AdminPage = () => {
                             onClick={() =>
                               setDraftChar({
                                 ...draftChar,
-                                echoSets: draftChar.echoSets.filter((_: any, i: number) => i !== idx),
+                                echoSets: draftChar.echoSets.filter(
+                                  (_: any, i: number) => i !== idx,
+                                ),
                               })
                             }
                             className="p-2 text-gray-500 hover:text-rose-400 cursor-pointer ml-auto"
@@ -1800,7 +1951,9 @@ export const AdminPage = () => {
                           onClick={() =>
                             setDraftChar({
                               ...draftChar,
-                              skills: draftChar.skills.filter((_: any, i: number) => i !== idx),
+                              skills: draftChar.skills.filter(
+                                (_: any, i: number) => i !== idx,
+                              ),
                             })
                           }
                           className="p-2 text-gray-500 hover:text-rose-400 cursor-pointer"
@@ -1822,7 +1975,6 @@ export const AdminPage = () => {
                   ))}
                 </div>
 
-                {/* Резонансные цепи S1–S6 */}
                 <div className="space-y-3 pt-4 border-t border-white/[0.08]">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-black uppercase tracking-wider text-amber-300">
@@ -1909,7 +2061,9 @@ export const AdminPage = () => {
                     value={
                       draftChar.rotation
                         ? draftChar.rotation
-                            .map((r: any) => (typeof r === 'string' ? r : (r.description ?? r.step ?? '')))
+                            .map((r: any) =>
+                              typeof r === 'string' ? r : r.description ?? r.step ?? '',
+                            )
                             .join('\n')
                         : ''
                     }
@@ -1948,7 +2102,10 @@ export const AdminPage = () => {
                   </div>
 
                   {draftChar.materials?.map((m: any, idx: number) => (
-                    <div key={idx} className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 animate-fade-in">
+                    <div
+                      key={idx}
+                      className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 animate-fade-in"
+                    >
                       <select
                         value={m.type}
                         onChange={(e) => {
@@ -1958,12 +2115,9 @@ export const AdminPage = () => {
                         }}
                         className={inputCls}
                       >
-                        <option value="Ascension">Босс (boss)</option>
-                        <option value="Forte">Недельный (weekly)</option>
-                        <option value="Skill">Цветок (flower)</option>
-                        <option value="Forte">Оружие/Форте (forgery)</option>
-                        <option value="Skill">Враги (enemy)</option>
-                        <option value="Forte">Кредиты (credits)</option>
+                        <option value="Ascension">Босс (Ascension)</option>
+                        <option value="Forte">Недельный / Форте (Forte)</option>
+                        <option value="Skill">Навыки / Враги (Skill)</option>
                       </select>
                       <input
                         value={m.name ?? ''}
@@ -1991,7 +2145,9 @@ export const AdminPage = () => {
                           onClick={() =>
                             setDraftChar({
                               ...draftChar,
-                              materials: draftChar.materials.filter((_: any, i: number) => i !== idx),
+                              materials: draftChar.materials.filter(
+                                (_: any, i: number) => i !== idx,
+                              ),
                             })
                           }
                           className="p-2 text-gray-500 hover:text-rose-400 cursor-pointer"
@@ -2028,7 +2184,6 @@ export const AdminPage = () => {
          ================================================================================= */}
       {mainTab === 'bestiary' && (
         <div className="grid grid-cols-1 lg:grid-cols-[380px,1fr] gap-6 items-start">
-          {/* Форма быстрого создания предмета */}
           <div className="glass-panel p-6 space-y-4 animate-fade-in">
             <h3 className="text-base font-black text-white flex items-center gap-2">
               <Plus size={17} className="text-accent-light" />
@@ -2141,7 +2296,6 @@ export const AdminPage = () => {
             </button>
           </div>
 
-          {/* Список записей в Бестиарии */}
           <div className="glass-panel p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-base font-black text-white">
@@ -2210,7 +2364,6 @@ export const AdminPage = () => {
          ================================================================================= */}
       {mainTab === 'cms' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start animate-fade-in">
-          {/* Редактор Новостей */}
           <div className="glass-panel p-6 space-y-4">
             <h3 className="text-lg font-black text-white flex items-center gap-2">
               <Newspaper size={18} className="text-accent-light" />
@@ -2278,7 +2431,6 @@ export const AdminPage = () => {
             </div>
           </div>
 
-          {/* Редактор Гайдов */}
           <div className="glass-panel p-6 space-y-4">
             <h3 className="text-lg font-black text-white flex items-center gap-2">
               <BookOpen size={18} className="text-accent-light" />

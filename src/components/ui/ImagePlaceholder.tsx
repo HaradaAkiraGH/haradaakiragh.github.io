@@ -1,6 +1,10 @@
-// Отрисовка портретов персонажей с аппаратным сглаживанием высоких разрешений (без пиксельной ряби)
+// Умная отрисовка портретов персонажей с поддержкой 3 форматов:
+// - 'card'   (Скрин 1): Большая вертикальная карточка для каталога
+// - 'icon'   (Скрин 2): Маленькая квадратная иконка для Меты, круток и мини-слотов
+// - 'splash' (Скрин 3): Горизонтальный арт для внутренней страницы персонажа
 import { useEffect, useState } from 'react';
 import { IMAGES } from '../../data/images';
+import { getCharacterArtUrls } from '../../utils/adminStorage';
 
 const GRADIENTS: Record<string, string> = {
   Spectro: 'from-yellow-600/50 to-yellow-950/60',
@@ -11,16 +15,49 @@ const GRADIENTS: Record<string, string> = {
   Aero: 'from-green-600/50 to-green-950/60',
 };
 
+// Регулярка для автоопределения мини-слотов (Мета, Крутки, Поиск, Калькулятор, Отряды)
+const SMALL_ICON_CLASS_RE =
+  /\b(w-7|w-8|w-9|w-10|w-11|w-12|w-14|w-16|w-20|aspect-square|aspect-\[3\/3\.8\])\b/;
+
 interface Props {
   id: string;
   initials: string;
   element: string;
   className?: string;
+  variant?: 'card' | 'icon' | 'splash';
 }
 
-export const ImagePlaceholder = ({ id, initials, element, className = '' }: Props) => {
+export const ImagePlaceholder = ({
+  id,
+  initials,
+  element,
+  className = '',
+  variant,
+}: Props) => {
   const [failed, setFailed] = useState(false);
-  const src = IMAGES[id];
+
+  const arts = getCharacterArtUrls(id);
+
+  // Определяем нужный формат картинки (явно переданный или по контексту)
+  let resolvedVariant: 'card' | 'icon' | 'splash' = variant ?? 'card';
+  if (!variant) {
+    if (SMALL_ICON_CLASS_RE.test(className)) {
+      resolvedVariant = 'icon';
+    } else if (
+      typeof window !== 'undefined' &&
+      window.location.pathname.startsWith(`/characters/${id}`) &&
+      !className.includes('aspect-[3/')
+    ) {
+      resolvedVariant = 'splash';
+    }
+  }
+
+  const src =
+    resolvedVariant === 'icon'
+      ? arts.icon || arts.card || IMAGES[id]
+      : resolvedVariant === 'splash'
+      ? arts.splash || arts.card || IMAGES[id]
+      : arts.card || IMAGES[id];
 
   useEffect(() => {
     setFailed(false);

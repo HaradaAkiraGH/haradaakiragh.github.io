@@ -1,14 +1,12 @@
 // Страница Меты (Prydwen Tier List + Team Tier List + English Echo Sets):
-// 1) Тиры T0 / T0.5 / T1 / T1.5 / T2 / T3 по колонкам ролей (Main DPS / Sub DPS / Support)
-// 2) Подписи механик под каждым героем ("Chafe", "Bane", "Frazzle", "Erosion", "Burst" и др.)
-// 3) Вкладка Командного тир-листа (Prydwen Team Tier List)
-// 4) Популярность наборов Эхо на английском языке (без бесполезного рейтинга оружия)
+// Квадратные иконки персонажей (variant="icon", Скрин 2) с плашкой S0 и подписями механик (CHAFE, BANE и др.)
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Trophy, Users, Sparkles, Layers } from 'lucide-react';
 import { CHARACTERS, getCharacterById } from '../data/characters';
 import { ImagePlaceholder } from '../components/ui/ImagePlaceholder';
 import { ELEMENTS } from '../utils/constants';
+import { getCharacterResonanceChain } from '../utils/pullMatch';
 import {
   PRYDWEN_CHAR_META,
   PRYDWEN_TAG_COLORS,
@@ -77,7 +75,6 @@ export const MetaPage = () => {
           </p>
         </div>
 
-        {/* Переключатели: Персонажи / Команды + Режим (Tower of Adversity / Whimpering Wastes) */}
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex p-1 rounded-2xl bg-black/50 border border-white/10">
             <button
@@ -136,7 +133,6 @@ export const MetaPage = () => {
       {/* ==================== ВКЛАДКА 1: ТИР-ЛИСТ ПЕРСОНАЖЕЙ (PRYDWEN) ==================== */}
       {viewTab === 'characters' ? (
         <div className="space-y-4">
-          {/* Фильтр по колонке роли + легенда тегов Prydwen */}
           <div className="glass-panel p-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-1.5">
               {(['all', ...COLUMNS] as const).map((col) => (
@@ -170,7 +166,6 @@ export const MetaPage = () => {
             </div>
           </div>
 
-          {/* Шапка колонок ролей */}
           {roleFilter === 'all' && (
             <div className="hidden lg:grid lg:grid-cols-[110px,1fr,1fr,1fr] gap-3 px-1">
               <div />
@@ -196,7 +191,6 @@ export const MetaPage = () => {
                     : 'lg:grid-cols-[110px,1fr]'
                 } gap-3 items-stretch`}
               >
-                {/* Бейдж тира слева */}
                 <div
                   className={`rounded-2xl border flex flex-col items-center justify-center p-4 shrink-0 ${TIER_BADGE_STYLE[tier]}`}
                 >
@@ -214,7 +208,6 @@ export const MetaPage = () => {
                   </span>
                 </div>
 
-                {/* Колонки ролей */}
                 {visibleColumns.map((col) => {
                   const charsInCell = CHARACTERS.filter((c) => {
                     const m = PRYDWEN_CHAR_META[c.id];
@@ -226,58 +219,68 @@ export const MetaPage = () => {
                   return (
                     <div
                       key={col}
-                      className="glass-panel p-3.5 flex flex-wrap content-start gap-2.5 min-h-[116px]"
+                      className="glass-panel p-3.5 flex flex-wrap content-start gap-3 min-h-[116px]"
                     >
                       {charsInCell.map((c) => {
                         const m = PRYDWEN_CHAR_META[c.id];
                         const el = ELEMENTS[c.element];
+                        const chain = getCharacterResonanceChain(c.id) ?? (c.rarity === 5 ? 0 : 6);
+                        const rarityFrame =
+                          c.rarity === 5
+                            ? 'bg-[#c3a548] border-[#d6b95c]'
+                            : 'bg-[#8d58b8] border-[#a672d1]';
+
                         return (
                           <Link
                             key={c.id}
                             to={`/characters/${c.id}`}
-                            className="group w-[88px] flex flex-col items-center bg-[#0b0d14]/90 hover:bg-[#141826] rounded-xl p-1.5 transition-all hover:-translate-y-1 focus-ring"
+                            title={c.name}
+                            className="group w-[86px] flex flex-col items-center transition-transform hover:-translate-y-1 focus-ring rounded-lg"
                           >
-                            <div className="relative w-full aspect-[3/3.8] rounded-lg overflow-hidden bg-[#121520]">
+                            {/* Квадратная иконка в стиле Prydwen (Скрин 2) */}
+                            <div
+                              className={`relative w-[82px] h-[82px] aspect-square overflow-hidden border-b-[3px] ${rarityFrame} shadow-md`}
+                            >
                               <ImagePlaceholder
                                 id={c.id}
                                 initials={c.name.slice(0, 2)}
                                 element={c.element}
+                                variant="icon"
                                 className="w-full h-full object-cover object-top"
                               />
-                              <span className="absolute top-1 left-1 w-4 h-4 rounded-md bg-black/75 flex items-center justify-center">
+
+                              {/* Иконка элемента в левом верхнем углу */}
+                              <span className="absolute top-0 left-0 w-6 h-6 bg-[#181b24]/95 flex items-center justify-center shadow">
                                 <img
                                   src={el.icon}
                                   alt={el.label}
-                                  className="w-3 h-3"
+                                  className="w-4 h-4"
                                   draggable={false}
                                 />
                               </span>
+
+                              {/* Бейдж созвездия S0 / S6 справа внизу (как на Скрине 2) */}
                               <span
-                                className={`absolute bottom-0 inset-x-0 h-[2px] ${
-                                  c.rarity === 5 ? 'bg-amber-400' : 'bg-purple-400'
+                                className={`absolute bottom-0 right-0 px-1.5 py-[1px] text-[10px] font-black leading-tight ${
+                                  c.rarity === 5
+                                    ? 'bg-[#c3a548] text-[#09090b]'
+                                    : 'bg-[#8d58b8] text-white'
                                 }`}
-                              />
+                              >
+                                S{chain}
+                              </span>
                             </div>
 
-                            <span className="text-[11px] font-extrabold text-white group-hover:text-accent-light truncate w-full text-center mt-1.5">
+                            {/* Имя персонажа */}
+                            <span className="text-[11px] font-extrabold text-white group-hover:text-accent-light truncate w-full text-center mt-1">
                               {c.name}
                             </span>
 
-                            {/* Теги Prydwen под персонажем ("Chafe", "Bane", "Frazzle" и т.д.) */}
+                            {/* Подпись механики Prydwen ("CHAFE", "BANE" и т.д.) */}
                             {m && m.tags.length > 0 && (
-                              <div className="flex flex-wrap justify-center gap-0.5 mt-1 w-full">
-                                {m.tags.slice(0, 2).map((tag) => (
-                                  <span
-                                    key={tag}
-                                    className={`px-1.5 py-[1px] rounded text-[9px] font-black leading-tight border ${
-                                      PRYDWEN_TAG_COLORS[tag] ??
-                                      'bg-white/10 text-gray-300 border-white/15'
-                                    }`}
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
+                              <span className="text-[10px] font-black uppercase tracking-wider text-[#d4ff59] drop-shadow text-center leading-tight mt-0.5">
+                                {m.tags[0]}
+                              </span>
                             )}
                           </Link>
                         );
@@ -294,7 +297,7 @@ export const MetaPage = () => {
           </div>
         </div>
       ) : (
-        /* ==================== ВКЛАДКА 2: КОМАНДНЫЙ ТИР-ЛИСТ (PRYDWEN TEAM TIER LIST) ==================== */
+        /* ==================== ВКЛАДКА 2: КОМАНДНЫЙ ТИР-ЛИСТ ==================== */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {PRYDWEN_TEAMS.map((team) => {
             const teamTier = mode === 'toa' ? team.toa : team.wastes;
@@ -337,13 +340,14 @@ export const MetaPage = () => {
                       <Link
                         key={mid}
                         to={`/characters/${ch.id}`}
-                        className="group p-2 rounded-2xl bg-[#090a10]/85 hover:bg-[#131624] flex flex-col items-center text-center transition-all"
+                        className="group p-2.5 rounded-2xl bg-[#090a10]/85 hover:bg-[#131624] flex flex-col items-center text-center transition-all"
                       >
                         <ImagePlaceholder
                           id={ch.id}
                           initials={ch.name.slice(0, 2)}
                           element={ch.element}
-                          className="w-16 h-20 rounded-xl object-cover object-top mb-1.5"
+                          variant="icon"
+                          className="w-16 h-16 aspect-square rounded-xl object-cover object-top mb-1.5"
                         />
                         <span className="text-xs font-extrabold text-white group-hover:text-accent-light truncate w-full">
                           {ch.name}
@@ -363,18 +367,16 @@ export const MetaPage = () => {
         </div>
       )}
 
-      {/* ==================== ПОПУЛЯРНОСТЬ НАБОРОВ ЭХО НА АНГЛИЙСКОМ (Пункт 7) ==================== */}
+      {/* ==================== ПОПУЛЯРНОСТЬ НАБОРОВ ЭХО НА АНГЛИЙСКОМ ==================== */}
       <div className="glass-panel p-6 space-y-4 solaris-crest">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div>
-            <h2 className="text-xl font-black text-white flex items-center gap-2">
-              <Layers size={20} className="text-accent-light" />
-              <span>Популярность наборов Эхо (Echo Sets)</span>
-            </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Официальные английские названия сонатных наборов и количество резонаторов, использующих сет
-            </p>
-          </div>
+        <div>
+          <h2 className="text-xl font-black text-white flex items-center gap-2">
+            <Layers size={20} className="text-accent-light" />
+            <span>Популярность наборов Эхо (Echo Sets)</span>
+          </h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Официальные английские названия сонатных наборов и количество резонаторов, использующих сет
+          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
