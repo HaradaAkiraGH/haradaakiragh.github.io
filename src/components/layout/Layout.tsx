@@ -1,4 +1,4 @@
-// Общий каркас сайта: плавная синхронизация сворачивания сайдбара без телепортов кнопки
+// Общий каркас сайта: плавная синхронизация сворачивания сайдбара + автоподгрузка новых героев из админки
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
@@ -7,10 +7,16 @@ import { MobileNav } from './MobileNav';
 import { SearchModal } from './SearchModal';
 import { BackgroundFX } from './BackgroundFX';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { initAdminRuntimeSync } from '../../utils/adminStorage';
 
 export const Layout = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [collapsed, setCollapsed] = useLocalStorage<boolean>('ww_sidebar_collapsed', false);
+  const [, setSyncTick] = useState(0);
+
+  useEffect(() => {
+    initAdminRuntimeSync().then(() => setSyncTick((t) => t + 1));
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -33,13 +39,14 @@ export const Layout = () => {
         onToggleCollapse={() => setCollapsed((prev) => !prev)}
       />
 
-      {/* Кнопка сворачивания сайдбара: плавно едет через style.left синхронно с шириной меню (z-50) */}
+      {/* Кнопка сворачивания сайдбара: плавно едет синхронно с шириной меню */}
       <button
         type="button"
         onClick={() => setCollapsed((prev) => !prev)}
         style={{
           left: collapsed ? '84px' : '260px',
-          transition: 'left 300ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms ease, background-color 200ms ease',
+          transition:
+            'left 300ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms ease, background-color 200ms ease',
         }}
         className="hidden md:flex fixed top-1/2 -translate-y-1/2 z-50 w-7 h-12 rounded-xl bg-[#121521]/95 hover:bg-[#1a1f30] text-gray-300 hover:text-accent-light shadow-[0_8px_24px_rgba(0,0,0,0.85)] items-center justify-center cursor-pointer focus-ring"
         aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
