@@ -119,9 +119,9 @@
   .text-gradient {
     background: linear-gradient(135deg, #ffffff 0%, #f7ece6 45%, #caa07d 100%);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
   }
-
   .focus-ring {
     @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70;
   }
