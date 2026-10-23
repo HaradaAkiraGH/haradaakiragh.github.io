@@ -16,10 +16,10 @@ const CUSTOM_SPLASHES_KEY = 'ww_admin_custom_splashes_v1';
 const CUSTOM_ART_POS_KEY = 'ww_admin_custom_art_pos_v1';
 const CUSTOM_NEWS_KEY = 'ww_admin_news_v1';
 const CUSTOM_GUIDES_KEY = 'ww_admin_guides_v1';
-const HOME_TILES_KEY = 'ww_admin_home_tiles_v1';
+// Ключ v2 автоматически сбрасывает старый тестовый кэш v1
+const HOME_TILES_KEY = 'ww_admin_home_tiles_v2';
 
-// Специальный ключ в таблице character_overrides для облачной синхронизации плиток Главной
-export const HOME_TILES_CLOUD_ID = '__home_tiles_config__';
+export const HOME_TILES_CLOUD_ID = '__home_tiles_config_v2__';
 
 const ORIGINAL_CHARS_SNAPSHOT: Map<string, Character> = new Map(
   CHARACTERS.map((c) => [c.id, JSON.parse(JSON.stringify(c)) as Character]),
@@ -56,7 +56,7 @@ export interface CharacterArtBundle {
   transforms: CharacterArtTransforms;
 }
 
-/* ==================== ГОРИЗОНТАЛЬНЫЕ ПЛИТКИ ГЛАВНОЙ СТРАНИЦЫ ==================== */
+/* ==================== 6 ГОРИЗОНТАЛЬНЫХ ПЛИТОК ИЗ ОРИГИНАЛЬНОГО HOMEPAGE.TSX ==================== */
 export interface HomeTileItem {
   id: string;
   title: string;
@@ -72,22 +72,36 @@ export interface HomeTileItem {
 export const DEFAULT_HOME_TILES: HomeTileItem[] = [
   {
     id: 'tile-characters',
-    title: 'Каталог Резонаторов',
-    badge: 'БАЗА ГЕРОЕВ',
+    title: 'Каталог резонаторов',
+    badge: '61 героев',
     description:
-      'Все 61+ резонаторов Соларис-3 с подробными билдами, созвездиями S1–S6, оружием и материалами вознесения.',
+      '61 игровых персонажей · Билды, эхо, ротации и прокачка',
     path: '/characters',
-    image: '/images/Camellya_Card.webp',
+    image:
+      'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=900&q=80',
     imagePosX: 50,
-    imagePosY: 18,
+    imagePosY: 50,
+    imageScale: 105,
+  },
+  {
+    id: 'tile-pulls',
+    title: 'Pull Tracker & Аналитика 50/50',
+    badge: 'Трекер',
+    description:
+      'Импорт истории круток из игры, лента 5★ пити и авто-расчёт S0–S6',
+    path: '/pulls',
+    image:
+      'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=900&q=80',
+    imagePosX: 50,
+    imagePosY: 50,
     imageScale: 105,
   },
   {
     id: 'tile-bestiary',
-    title: 'Бестиарий и Материалы',
-    badge: 'АРХИВ 163+',
+    title: 'Бестиарий Соларис-3',
+    badge: 'Архив 3.7',
     description:
-      'Полный каталог всех 163 материалов вознесения, боссов, диковинок, оружия и поглощённых частот Эхо.',
+      'Полная база всех материалов вознесения (патч 3.7), оружия, эхо и боссов',
     path: '/bestiary',
     image:
       'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=900&q=80',
@@ -96,38 +110,12 @@ export const DEFAULT_HOME_TILES: HomeTileItem[] = [
     imageScale: 105,
   },
   {
-    id: 'tile-meta',
-    title: 'Мета и Тир-лист',
-    badge: 'PRYDWEN T0–T3',
+    id: 'tile-calculator',
+    title: 'Оценщик Эхо (Echo Scorer)',
+    badge: 'SSS Калькулятор',
     description:
-      'Актуальный рейтинг эффективности персонажей и топовых отрядов для Tower of Adversity и Whimpering Wastes.',
-    path: '/meta',
-    image:
-      'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=900&q=80',
-    imagePosX: 50,
-    imagePosY: 50,
-    imageScale: 105,
-  },
-  {
-    id: 'tile-pulls',
-    title: 'Трекер Круток (Convene)',
-    badge: 'АНАЛИТИКА ГАЧИ',
-    description:
-      'Импорт истории призывов из логов игры в 1 клик, подсчёт пити, 50/50 и автоматический учёт созвездий.',
-    path: '/pulls',
-    image:
-      'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=900&q=80',
-    imagePosX: 50,
-    imagePosY: 50,
-    imageScale: 105,
-  },
-  {
-    id: 'tile-map',
-    title: 'Интерактивная Карта',
-    badge: 'НАВИГАТОР МИРА',
-    description:
-      'Сундуки, Сонанс-каскеты, боссы, телепорты и маршруты фарма диковинок с отметкой собранного прогресса.',
-    path: '/map',
+      'Проверка сабстатов Эхо с рангами B–SSS, расчёт Crit Value и урона',
+    path: '/calculator',
     image:
       'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=900&q=80',
     imagePosX: 50,
@@ -135,14 +123,27 @@ export const DEFAULT_HOME_TILES: HomeTileItem[] = [
     imageScale: 105,
   },
   {
-    id: 'tile-calculator',
-    title: 'Калькулятор Эхо и Статов',
-    badge: 'ОПТИМИЗАТОР',
+    id: 'tile-map',
+    title: 'Интерактивная карта',
+    badge: 'Собрано 0%',
     description:
-      'Расчёт итогового крит-баланса, ценности саб-статов Эхо и симуляция урона резонатора перед прокачкой.',
-    path: '/calculator',
+      'Сундуки, боссы, головоломки и точки фарма Хуанлуна и Ринаты',
+    path: '/map',
     image:
-      'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=900&q=80',
+    imagePosX: 50,
+    imagePosY: 50,
+    imageScale: 105,
+  },
+  {
+    id: 'tile-meta',
+    title: 'Мета-тирлист патча',
+    badge: 'Tier T0–T3',
+    description:
+      'Актуальный рейтинг резонаторов для Tower of Adversity и Whimpering Wastes',
+    path: '/meta',
+    image:
+      'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?auto=format&fit=crop&w=900&q=80',
     imagePosX: 50,
     imagePosY: 50,
     imageScale: 105,
@@ -195,7 +196,6 @@ export interface AdminGuideItem {
   content: string;
 }
 
-/* ---------- Чтение словарей из localStorage ---------- */
 export const getCustomImagesMap = (): Record<string, string> => {
   try {
     const raw = localStorage.getItem(CUSTOM_IMAGES_KEY);
@@ -398,7 +398,6 @@ export const syncAdminContentToRuntime = (
   const customChars = getCustomCharacters();
   const localOverrides = getLocalCharOverrides();
 
-  // Если с сервера пришли сохранённые плитки Главной — синхронизируем их
   if (serverEdits && serverEdits[HOME_TILES_CLOUD_ID]) {
     const cloudTiles = (serverEdits[HOME_TILES_CLOUD_ID] as any)?.tiles;
     if (Array.isArray(cloudTiles) && cloudTiles.length > 0) {
@@ -426,7 +425,7 @@ export const syncAdminContentToRuntime = (
   };
 
   for (const [charId, patch] of Object.entries(mergedEdits)) {
-    if (charId === HOME_TILES_CLOUD_ID) continue;
+    if (charId === HOME_TILES_CLOUD_ID || charId === '__home_tiles_config__') continue;
     if (!patch || typeof patch !== 'object') continue;
     const rec = patch as Record<string, any>;
 
