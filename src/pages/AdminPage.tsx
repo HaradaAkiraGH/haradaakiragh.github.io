@@ -1,9 +1,10 @@
 // Командный центр Администратора Stellar Wiki (Solaris-3 Root Terminal):
-// 1) Поддержка загрузки 3 отдельных картинок для каждого персонажа:
-//    - Большая карточка (Скрин 1, вертикальная для каталога)
-//    - Маленькая иконка (Скрин 2, квадратная для Меты и мини-слотов)
-//    - Горизонтальный арт (Скрин 3, широкая для внутренней страницы персонажа)
-// 2) Визуальный конструктор героев, Бестиарий (163 материала) и CMS
+// 1) Интерактивное перемещение картинки мышкой + ползунки X%, Y% и Масштаб% для всех 3 форматов (Card, Icon, Splash)
+// 2) Мгновенное сохранение Лора и биографии в карточку персонажа
+// 3) Редактирование мета-позиции Prydwen (T0 / T0.5 / T1 / T1.5 / T2 / T3), колонки роли и меток (Bane, Chafe, Frazzle и др.)
+// 4) Редактирование % пользы оружия
+// 5) Редактирование Наборов Эхо (Схема Cost, Мейн-статы Cost 4/3/1, Приоритет саб-статов) и Целевых статов 90 ур.
+// 6) Полный редактор Команд: добавление, редактирование, метки команды и смена приоритета команды (↑ / ↓)
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -30,6 +31,10 @@ import {
   CloudUpload,
   X,
   Image as ImageIcon,
+  Move,
+  ArrowUp,
+  ArrowDown,
+  Users,
 } from 'lucide-react';
 import { CHARACTERS } from '../data/characters';
 import { IMAGES } from '../data/images';
@@ -39,6 +44,11 @@ import type {
   WeaponType,
   CharacterRole,
 } from '../data/types';
+import {
+  PRYDWEN_CHAR_META,
+  PrydwenTier,
+  PrydwenRoleCol,
+} from '../data/prydwenMeta';
 import { CharacterCard } from '../components/characters/CharacterCard';
 import { ImagePlaceholder } from '../components/ui/ImagePlaceholder';
 import { useAuth } from '../hooks/useAuth';
@@ -61,6 +71,10 @@ import {
   saveCharacterArtBundle,
   CHARACTER_ICONS,
   CHARACTER_SPLASHES,
+  CHARACTER_ART_TRANSFORMS,
+  CharacterArtTransforms,
+  DEFAULT_ART_TRANSFORMS,
+  ArtPosition,
   syncAdminContentToRuntime,
   getAdminNews,
   saveAdminNews,
@@ -75,8 +89,6 @@ import {
 } from '../data/materialsCatalog';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
-type TierRank = 'S' | 'A' | 'B' | 'C' | '-';
-
 const ROLES: CharacterRole[] = [
   'Main DPS',
   'Sub DPS',
@@ -84,7 +96,39 @@ const ROLES: CharacterRole[] = [
   'Healer',
   'Defender',
 ];
-const TIERS: TierRank[] = ['S', 'A', 'B', 'C', '-'];
+
+// Актуальные ранги меты Prydwen вместо S / A / B / C (Задача 3)
+const PRYDWEN_TIERS: PrydwenTier[] = ['T0', 'T0.5', 'T1', 'T1.5', 'T2', 'T3'];
+const PRYDWEN_COLUMNS: PrydwenRoleCol[] = [
+  'Main DPS',
+  'Hybrid / Sub DPS',
+  'Support / Sustain',
+];
+const PRYDWEN_MECHANIC_TAGS = [
+  'Bane',
+  'Chafe',
+  'Frazzle',
+  'Erosion',
+  'Burst',
+  'Coord',
+  'Amp',
+  'Heal',
+  'Shield',
+  'AoE',
+];
+const TEAM_PRESET_TAGS = [
+  'Hypercarry',
+  'Quickswap',
+  'Dual DPS',
+  'F2P',
+  'BiS',
+  'Bane',
+  'Chafe',
+  'Frazzle',
+  'Erosion',
+  'Burst',
+  'AoE',
+];
 
 function slugifyName(input: string): string {
   return input
@@ -132,18 +176,18 @@ const createEmptyCharacter = (): any => ({
   role: 'Main DPS',
   releaseDate: '2026-10',
   lore: 'Новый резонатор Соларис-3, добавленный через терминал администратора Stellar Wiki.',
-  stats: { hp: 11800, atk: 445, def: 1150, energyRegen: 120 },
+  stats: { hp: 12450, atk: 445, def: 1180, energyRegen: 120 },
   targetStats: [
     { name: 'Crit Rate', value: '70–80%', note: 'Приоритет' },
-    { name: 'Crit DMG', value: '260–285%' },
-    { name: 'ATK', value: '2200+' },
-    { name: 'Energy Regen', value: '120–130%' },
-  ] as any[],
+    { name: 'Crit DMG', value: '265–285%', note: 'С учётом базовых 150%' },
+    { name: 'ATK', value: '2200–2450+', note: 'На 90 ур.' },
+    { name: 'Energy Regen', value: '120–130%', note: 'Для ульты по КД' },
+  ],
   skillPriority: [
     { name: 'Forte Circuit', priority: 5, level: '10' },
     { name: 'Resonance Liberation', priority: 5, level: '10' },
     { name: 'Resonance Skill', priority: 4, level: '8–10' },
-  ] as any[],
+  ],
   strengths: [
     'Огромный взрывной урон по одиночным и групповым целям',
     'Удобная ротация и высокая мобильность',
@@ -152,31 +196,36 @@ const createEmptyCharacter = (): any => ({
   echoSets: [
     {
       name: 'Midnight Veil (5pc)',
-      description: '+10% элементального урона и бонус при смене резонатора',
       cost4: 'Nightmare: Impermanence Heron',
+      costLayout: '4-3-3-1-1',
+      cost4Main: 'Crit Rate / Crit DMG',
+      cost3Main: 'Havoc DMG% / Havoc DMG%',
+      cost1Main: 'ATK% / ATK%',
+      substatsPriority: 'Crit Rate = Crit DMG > ATK% > Energy Regen > Basic Attack DMG%',
+      description: '+10% Havoc DMG и бонус при смене резонатора',
       substats: ['Crit Rate', 'Crit DMG', 'ATK%', 'Energy Regen'],
     },
-  ] as any[],
+  ],
   weapons: [
     {
       name: 'Сигнатурный клинок 5★',
+      stat: 'Crit DMG 48.6%',
+      percent: 100,
       passive: 'Увеличивает атаку на 12% и бонус основного урона на 48%.',
       isBest: true,
       rank: 1,
+      note: 'BiS (Сигнатурное)',
     },
-  ] as any[],
-  rotation: [
-    { step: 'Intro Skill при входе на поле', description: 'Intro Skill при входе на поле' },
-    { step: 'Resonance Skill для набора стаков Форте', description: 'Resonance Skill для набора стаков Форте' },
-    { step: 'Resonance Liberation (Ультимейт)', description: 'Resonance Liberation (Ультимейт)' },
-    { step: 'Разрядка Forte Circuit ➔ Outro Skill', description: 'Разрядка Forte Circuit ➔ Outro Skill' },
-  ] as any[],
+  ],
   teams: [
     {
+      name: 'Премиум Гиперкерри',
+      priority: 1,
+      tags: ['Hypercarry', 'BiS', 'Bane'],
       members: ['camellya', 'roccia', 'shorekeeper'],
-      note: 'Премиум Гиперкерри (Максимальный урон под баффами)',
+      note: 'Максимальный урон под баффами Roccia и Shorekeeper.',
     },
-  ] as any[],
+  ],
   materials: [
     { type: 'Ascension', name: 'Topological Confinement', count: '46' },
     { type: 'Forte', name: 'Dreamless Feather', count: '26' },
@@ -184,7 +233,7 @@ const createEmptyCharacter = (): any => ({
     { type: 'Skill', name: 'Heterized Metallic Drip', count: '67' },
     { type: 'Skill', name: 'FF Whisperin Core', count: '61' },
     { type: 'Forte', name: 'Shell Credits', count: '2 200 000' },
-  ] as any[],
+  ],
   skills: [
     {
       type: 'Basic',
@@ -216,7 +265,7 @@ const createEmptyCharacter = (): any => ({
       name: 'Аутро-навык',
       description: 'Усиливает следующего входящего на поле резонатора.',
     },
-  ] as any[],
+  ],
   constellations: [
     { name: 'Цепь S1', description: 'Повышает шанс крит. удара и устойчивость к прерыванию.' },
     { name: 'Цепь S2', description: 'Увеличивает множитель взрывного урона на 40%.' },
@@ -224,8 +273,14 @@ const createEmptyCharacter = (): any => ({
     { name: 'Цепь S4', description: 'Даёт 25% бонус к урону всей команде при активации ульты.' },
     { name: 'Цепь S5', description: 'Повышает уровень базовой атаки и контура Форте.' },
     { name: 'Цепь S6', description: 'Открывает финальную форму с игнорированием 40% защиты врагов.' },
-  ] as any[],
+  ],
   metaRating: { tower: 'S', realm: 'S' },
+  prydwenMeta: {
+    toa: 'T0' as PrydwenTier,
+    wastes: 'T0' as PrydwenTier,
+    column: 'Main DPS' as PrydwenRoleCol,
+    tags: ['Bane', 'AoE'],
+  },
 });
 
 const inputCls =
@@ -233,211 +288,304 @@ const inputCls =
 const labelCls =
   'block text-[11px] font-extrabold uppercase tracking-wider text-gray-400 mb-1.5';
 
-/* Универсальный блок загрузки всех 3 форматов артов персонажа (Скрин 1, Скрин 2, Скрин 3) */
-const TripleArtUploader = ({
-  cardUrl,
-  iconUrl,
-  splashUrl,
-  onChangeCard,
-  onChangeIcon,
-  onChangeSplash,
+/* Интерактивный слот одного формата картинки с перетаскиванием мышкой и ползунками X / Y / Scale (Задача 1) */
+const DraggableArtSlot = ({
+  title,
+  subtitle,
+  badgeColor,
+  aspectClass,
+  imageUrl,
+  fallbackUrl,
+  pos,
+  onChangeUrl,
+  onChangePos,
+  onResetPos,
+  maxW,
+  maxH,
 }: {
-  cardUrl: string;
-  iconUrl: string;
-  splashUrl: string;
-  onChangeCard: (url: string) => void;
-  onChangeIcon: (url: string) => void;
-  onChangeSplash: (url: string) => void;
+  title: string;
+  subtitle: string;
+  badgeColor: string;
+  aspectClass: string;
+  imageUrl: string;
+  fallbackUrl?: string;
+  pos: ArtPosition;
+  onChangeUrl: (url: string) => void;
+  onChangePos: (next: ArtPosition) => void;
+  onResetPos: () => void;
+  maxW: number;
+  maxH: number;
 }) => {
-  const cardInputRef = useRef<HTMLInputElement | null>(null);
-  const iconInputRef = useRef<HTMLInputElement | null>(null);
-  const splashInputRef = useRef<HTMLInputElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const dragRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+  }>({ active: false, startX: 0, startY: 0, origX: 50, origY: 20 });
 
-  const handleFile = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    maxW: number,
-    maxH: number,
-    cb: (url: string) => void,
-  ) => {
+  const displaySrc = imageUrl || fallbackUrl || '';
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
       const dataUrl = await compressImage(file, maxW, maxH);
-      cb(dataUrl);
+      onChangeUrl(dataUrl);
+    } catch {
+      // игнорируем
+    }
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!displaySrc) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: pos.x,
+      origY: pos.y,
+    };
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    // Перемещение мыши вправо сдвигает кадр влево (естественное перетаскивание полотна)
+    const nextX = Math.max(0, Math.min(100, Math.round(dragRef.current.origX - dx * 0.45)));
+    const nextY = Math.max(0, Math.min(100, Math.round(dragRef.current.origY - dy * 0.45)));
+    onChangePos({ ...pos, x: nextX, y: nextY });
+  };
+
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active) return;
+    dragRef.current.active = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
       // игнорируем
     }
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-accent-light">
-        <ImageIcon size={15} />
-        <span>3 формата графики персонажа (Каталог · Мета-иконка · Горизонтальный баннер)</span>
+    <div className="p-4 rounded-2xl bg-black/45 border border-white/[0.08] flex flex-col justify-between gap-3">
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFile}
+        className="hidden"
+      />
+
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <span className={`text-xs font-extrabold block ${badgeColor}`}>
+            {title}
+          </span>
+          <span className="text-[11px] text-gray-400">{subtitle}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onResetPos}
+            className="px-2 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-[10px] font-bold text-gray-300 cursor-pointer"
+            title="Сбросить позицию и зум"
+          >
+            Сброс
+          </button>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] text-[11px] font-extrabold shrink-0 cursor-pointer"
+          >
+            <Upload size={11} />
+            <span>Файл</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Окно интерактивного перетаскивания картинки мышкой */}
+      <div className="relative rounded-xl bg-[#07080d] border border-white/10 p-2 flex flex-col items-center justify-center">
+        <div
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          className={`relative overflow-hidden rounded-xl border border-white/15 bg-[#0e1018] select-none cursor-grab active:cursor-grabbing ${aspectClass}`}
+        >
+          {displaySrc ? (
+            <img
+              src={displaySrc}
+              alt={title}
+              draggable={false}
+              style={{
+                objectPosition: `${pos.x}% ${pos.y}%`,
+                transformOrigin: `${pos.x}% ${pos.y}%`,
+                transform: `scale(${pos.scale / 100})`,
+              }}
+              className="w-full h-full object-cover pointer-events-none"
+            />
+          ) : (
+            <span className="text-[11px] text-gray-500 flex items-center justify-center h-full px-3 text-center">
+              Загрузи картинку
+            </span>
+          )}
+        </div>
+        <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-gray-400">
+          <Move size={11} className="text-accent-light" />
+          <span>Зажми картинку мышкой, чтобы сдвинуть ракурс</span>
+        </span>
+      </div>
+
+      {/* Ползунки точной подстройки X%, Y% и Зума */}
+      <div className="space-y-1.5 bg-[#090b12]/90 p-2.5 rounded-xl border border-white/[0.06] text-[10px]">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-gray-400 w-20">Горизонт. X:</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={pos.x}
+            onChange={(e) => onChangePos({ ...pos, x: Number(e.target.value) })}
+            className="flex-1 accent-[#caa07d] cursor-pointer"
+          />
+          <span className="font-mono text-ivory w-9 text-right">{pos.x}%</span>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-gray-400 w-20">Вертикаль Y:</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={pos.y}
+            onChange={(e) => onChangePos({ ...pos, y: Number(e.target.value) })}
+            className="flex-1 accent-[#caa07d] cursor-pointer"
+          />
+          <span className="font-mono text-ivory w-9 text-right">{pos.y}%</span>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-gray-400 w-20">Масштаб:</span>
+          <input
+            type="range"
+            min={80}
+            max={200}
+            value={pos.scale}
+            onChange={(e) =>
+              onChangePos({ ...pos, scale: Number(e.target.value) })
+            }
+            className="flex-1 accent-[#caa07d] cursor-pointer"
+          />
+          <span className="font-mono text-amber-300 w-9 text-right">
+            {pos.scale}%
+          </span>
+        </div>
       </div>
 
       <input
-        ref={cardInputRef}
-        type="file"
-        accept="image/*"
-        onChange={(e) => handleFile(e, 720, 1080, onChangeCard)}
-        className="hidden"
+        type="text"
+        value={imageUrl}
+        onChange={(e) => onChangeUrl(e.target.value)}
+        placeholder="URL картинки (https://... или /images/...)"
+        className={inputCls}
       />
-      <input
-        ref={iconInputRef}
-        type="file"
-        accept="image/*"
-        onChange={(e) => handleFile(e, 320, 320, onChangeIcon)}
-        className="hidden"
-      />
-      <input
-        ref={splashInputRef}
-        type="file"
-        accept="image/*"
-        onChange={(e) => handleFile(e, 1400, 780, onChangeSplash)}
-        className="hidden"
-      />
+    </div>
+  );
+};
+
+/* Универсальный блок загрузки и позиционирования всех 3 форматов артов персонажа */
+const TripleArtUploader = ({
+  cardUrl,
+  iconUrl,
+  splashUrl,
+  transforms,
+  onChangeCard,
+  onChangeIcon,
+  onChangeSplash,
+  onChangeTransforms,
+}: {
+  cardUrl: string;
+  iconUrl: string;
+  splashUrl: string;
+  transforms: CharacterArtTransforms;
+  onChangeCard: (url: string) => void;
+  onChangeIcon: (url: string) => void;
+  onChangeSplash: (url: string) => void;
+  onChangeTransforms: (next: CharacterArtTransforms) => void;
+}) => {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-accent-light">
+        <ImageIcon size={15} />
+        <span>
+          3 формата графики персонажа + перемещение ракурса (зажми мышкой или крути ползунки)
+        </span>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* 1. БОЛЬШАЯ ВЕРТИКАЛЬНАЯ КАРТОЧКА (Скрин 1) */}
-        <div className="p-4 rounded-2xl bg-black/45 border border-white/[0.08] flex flex-col justify-between gap-3">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <span className="text-xs font-extrabold text-white block">
-                1. Большая карточка (3:4.5)
-              </span>
-              <span className="text-[11px] text-gray-400">
-                Для каталога персонажей `/characters`
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => cardInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] text-[11px] font-extrabold shrink-0 cursor-pointer"
-            >
-              <Upload size={12} />
-              <span>Файл</span>
-            </button>
-          </div>
+        <DraggableArtSlot
+          title="1. Большая карточка (3:4.5)"
+          subtitle="Для каталога /characters"
+          badgeColor="text-white"
+          aspectClass="w-32 h-48"
+          imageUrl={cardUrl}
+          pos={transforms.card}
+          onChangeUrl={onChangeCard}
+          onChangePos={(card) => onChangeTransforms({ ...transforms, card })}
+          onResetPos={() =>
+            onChangeTransforms({
+              ...transforms,
+              card: { ...DEFAULT_ART_TRANSFORMS.card },
+            })
+          }
+          maxW={720}
+          maxH={1080}
+        />
 
-          <div className="h-36 rounded-xl overflow-hidden bg-[#090a10] border border-white/10 flex items-center justify-center">
-            {cardUrl ? (
-              <img
-                src={cardUrl}
-                alt="Card preview"
-                className="h-full w-auto object-cover"
-              />
-            ) : (
-              <span className="text-xs text-gray-600">Нет вертикальной карточки</span>
-            )}
-          </div>
+        <DraggableArtSlot
+          title="2. Маленькая иконка (1:1)"
+          subtitle="Для Меты /meta, круток и отрядов"
+          badgeColor="text-amber-300"
+          aspectClass="w-32 h-32 aspect-square"
+          imageUrl={iconUrl}
+          fallbackUrl={cardUrl}
+          pos={transforms.icon}
+          onChangeUrl={onChangeIcon}
+          onChangePos={(icon) => onChangeTransforms({ ...transforms, icon })}
+          onResetPos={() =>
+            onChangeTransforms({
+              ...transforms,
+              icon: { ...DEFAULT_ART_TRANSFORMS.icon },
+            })
+          }
+          maxW={360}
+          maxH={360}
+        />
 
-          <input
-            type="text"
-            value={cardUrl}
-            onChange={(e) => onChangeCard(e.target.value)}
-            placeholder="URL вертикальной карточки..."
-            className={inputCls}
-          />
-        </div>
-
-        {/* 2. МАЛЕНЬКАЯ КВАДРАТНАЯ ИКОНКА (Скрин 2) */}
-        <div className="p-4 rounded-2xl bg-black/45 border border-white/[0.08] flex flex-col justify-between gap-3">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <span className="text-xs font-extrabold text-amber-300 block">
-                2. Маленькая иконка (1:1)
-              </span>
-              <span className="text-[11px] text-gray-400">
-                Для Меты `/meta`, круток и мини-слотов
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => iconInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 text-[#09090b] text-[11px] font-extrabold shrink-0 cursor-pointer"
-            >
-              <Upload size={12} />
-              <span>Файл</span>
-            </button>
-          </div>
-
-          <div className="h-36 rounded-xl bg-[#090a10] border border-white/10 flex items-center justify-center p-2">
-            <div className="relative w-24 h-24 aspect-square bg-[#c3a548] border-b-[3px] border-[#d6b95c] overflow-hidden shadow-lg">
-              {iconUrl || cardUrl ? (
-                <img
-                  src={iconUrl || cardUrl}
-                  alt="Icon preview"
-                  className="w-full h-full object-cover object-top"
-                />
-              ) : (
-                <span className="text-[10px] text-black font-bold flex items-center justify-center h-full">
-                  1:1 ICON
-                </span>
-              )}
-              <span className="absolute bottom-0 right-0 px-1.5 py-[1px] bg-[#c3a548] text-[#09090b] text-[10px] font-black">
-                S0
-              </span>
-            </div>
-          </div>
-
-          <input
-            type="text"
-            value={iconUrl}
-            onChange={(e) => onChangeIcon(e.target.value)}
-            placeholder="URL маленькой квадратной иконки..."
-            className={inputCls}
-          />
-        </div>
-
-        {/* 3. ГОРИЗОНТАЛЬНЫЙ АРТ / БАННЕР (Скрин 3) */}
-        <div className="p-4 rounded-2xl bg-black/45 border border-white/[0.08] flex flex-col justify-between gap-3">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <span className="text-xs font-extrabold text-cyan-300 block">
-                3. Горизонтальный арт (16:9)
-              </span>
-              <span className="text-[11px] text-gray-400">
-                Для внутренней карточки `/characters/:id`
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => splashInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-400 text-[#09090b] text-[11px] font-extrabold shrink-0 cursor-pointer"
-            >
-              <Upload size={12} />
-              <span>Файл</span>
-            </button>
-          </div>
-
-          <div className="h-36 rounded-xl overflow-hidden bg-[#090a10] border border-white/10 flex items-center justify-center relative">
-            {splashUrl || cardUrl ? (
-              <>
-                <img
-                  src={splashUrl || cardUrl}
-                  alt="Splash preview"
-                  className="w-full h-full object-cover object-center"
-                />
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/30 to-black/80 flex items-end p-3">
-                  <span className="text-[10px] font-bold text-white/90">
-                    Внутренний баннер героя
-                  </span>
-                </div>
-              </>
-            ) : (
-              <span className="text-xs text-gray-600">Нет горизонтального арта</span>
-            )}
-          </div>
-
-          <input
-            type="text"
-            value={splashUrl}
-            onChange={(e) => onChangeSplash(e.target.value)}
-            placeholder="URL горизонтального арта..."
-            className={inputCls}
-          />
-        </div>
+        <DraggableArtSlot
+          title="3. Горизонтальный арт (16:9)"
+          subtitle="Баннер внутри /characters/:id"
+          badgeColor="text-cyan-300"
+          aspectClass="w-full h-36"
+          imageUrl={splashUrl}
+          fallbackUrl={cardUrl}
+          pos={transforms.splash}
+          onChangeUrl={onChangeSplash}
+          onChangePos={(splash) =>
+            onChangeTransforms({ ...transforms, splash })
+          }
+          onResetPos={() =>
+            onChangeTransforms({
+              ...transforms,
+              splash: { ...DEFAULT_ART_TRANSFORMS.splash },
+            })
+          }
+          maxW={1400}
+          maxH={780}
+        />
       </div>
     </div>
   );
@@ -447,14 +595,14 @@ export const AdminPage = () => {
   useDocumentMeta({
     title: 'Root-Терминал Администратора — Stellar Wiki',
     description:
-      'Панель управления Stellar Wiki: 3 формата карточек персонажей, конструктор билдов, Бестиарий и CMS.',
+      'Панель управления Stellar Wiki: позиционирование артов, мета T0–T3, оружие с %, наборы Эхо, статы и команды.',
   });
 
   const { token, user } = useAuth();
 
   const [mainTab, setMainTab] = useState<
     'create-char' | 'edit-char' | 'bestiary' | 'cms' | 'database'
-  >('create-char');
+  >('edit-char');
 
   const [refreshTick, setRefreshTick] = useState(0);
   const [statusMsg, setStatusMsg] = useState<{
@@ -473,6 +621,9 @@ export const AdminPage = () => {
   const [newCardUrl, setNewCardUrl] = useState<string>('/images/Camellya_Card.webp');
   const [newIconUrl, setNewIconUrl] = useState<string>('');
   const [newSplashUrl, setNewSplashUrl] = useState<string>('');
+  const [newTransforms, setNewTransforms] = useState<CharacterArtTransforms>(
+    () => JSON.parse(JSON.stringify(DEFAULT_ART_TRANSFORMS)),
+  );
   const [autoSlug, setAutoSlug] = useState(true);
 
   /* ==================== СОСТОЯНИЕ ВКЛАДКИ 2: РЕДАКТОР СУЩЕСТВУЮЩИХ И НОВЫХ ГЕРОЕВ ==================== */
@@ -490,7 +641,11 @@ export const AdminPage = () => {
   const [draftCardUrl, setDraftCardUrl] = useState<string>('');
   const [draftIconUrl, setDraftIconUrl] = useState<string>('');
   const [draftSplashUrl, setDraftSplashUrl] = useState<string>('');
+  const [draftTransforms, setDraftTransforms] = useState<CharacterArtTransforms>(
+    () => JSON.parse(JSON.stringify(DEFAULT_ART_TRANSFORMS)),
+  );
   const [rawJsonText, setRawJsonText] = useState<string>('');
+  const [customTeamTagInput, setCustomTeamTagInput] = useState<string>('');
 
   const [serverEdits, setServerEdits] = useState<
     Record<string, Record<string, unknown>>
@@ -549,16 +704,44 @@ export const AdminPage = () => {
       .catch((_: any) => {});
   }, []);
 
-  // Загружаем данные и все 3 картинки при выборе персонажа в редакторе
+  // Загружаем данные, 3 картинки, координаты X/Y/Scale и мета-ранги T0..T3 при выборе персонажа
   useEffect(() => {
     const found = CHARACTERS.find((c) => c.id === selectedCharId);
     if (!found) return;
     const cloned = JSON.parse(JSON.stringify(found)) as any;
     const artBundle = getCharacterArtUrls(found.id);
+    const prydwen = PRYDWEN_CHAR_META[found.id];
+
+    if (!cloned.prydwenMeta) {
+      cloned.prydwenMeta = {
+        toa: prydwen?.toa ?? 'T0.5',
+        wastes: prydwen?.wastes ?? 'T0.5',
+        column: prydwen?.column ?? 'Main DPS',
+        tags: prydwen?.tags ? [...prydwen.tags] : [],
+      };
+    }
+    if (!cloned.stats) {
+      cloned.stats = {
+        hp: cloned.rarity === 5 ? 12450 : 10800,
+        atk: cloned.rarity === 5 ? 435 : 375,
+        def: cloned.rarity === 5 ? 1180 : 1040,
+        energyRegen: 120,
+      };
+    }
+    if (!Array.isArray(cloned.targetStats) || cloned.targetStats.length === 0) {
+      cloned.targetStats = [
+        { name: 'Crit Rate', value: '70–80%', note: 'Приоритет' },
+        { name: 'Crit DMG', value: '260–285%', note: 'С учётом базовых 150%' },
+        { name: 'ATK', value: '2150–2450+', note: 'На 90 ур.' },
+        { name: 'Energy Regen', value: '120–130%', note: 'Ульта по КД' },
+      ];
+    }
+
     setDraftChar(cloned);
     setDraftCardUrl(artBundle.card);
     setDraftIconUrl(artBundle.icon);
     setDraftSplashUrl(artBundle.splash);
+    setDraftTransforms(artBundle.transforms);
     setRawJsonText(JSON.stringify(cloned, null, 2));
   }, [selectedCharId, refreshTick]);
 
@@ -591,24 +774,23 @@ export const AdminPage = () => {
         title: newChar.title.trim() || 'Резонатор Соларис-3',
       };
 
-      // 1. Сохраняем все 3 формата картинок (card, icon, splash)
       saveCharacterArtBundle(cleanId, {
         card: newCardUrl.trim(),
         icon: newIconUrl.trim(),
         splash: newSplashUrl.trim(),
+        transforms: newTransforms,
       });
 
-      // 2. Сохраняем в список кастомных персонажей и инжектируем в CHARACTERS
       const existingCustom = getCustomCharacters().filter((c) => c.id !== cleanId);
       saveCustomCharacters([finalChar, ...existingCustom]);
 
-      // 3. Сохраняем в Supabase вместе с 3 полями картинок
       if (token) {
         await apiSaveCharacterOverride(token, cleanId, {
           ...(finalChar as unknown as Record<string, unknown>),
           __cardImage: newCardUrl.trim(),
           __iconImage: newIconUrl.trim(),
           __splashImage: newSplashUrl.trim(),
+          __artTransforms: newTransforms,
           __isCustomCharacter: true,
         });
       }
@@ -617,7 +799,7 @@ export const AdminPage = () => {
       setSelectedCharId(cleanId);
       notify(
         'ok',
-        `Персонаж «${finalChar.name}» и все 3 формата его карточек добавлены на сайт!`,
+        `Персонаж «${finalChar.name}» создан и добавлен в каталог сайта!`,
       );
       setNewChar(createEmptyCharacter());
       setNewIconUrl('');
@@ -649,41 +831,48 @@ export const AdminPage = () => {
         }
       }
 
-      // 1. Сохраняем все 3 формата картинок персонажа
+      // 1. Сохраняем все 3 формата картинок и их координаты X/Y/Scale
       saveCharacterArtBundle(toSave.id, {
         card: draftCardUrl,
         icon: draftIconUrl,
         splash: draftSplashUrl,
+        transforms: draftTransforms,
       });
 
-      // 2. Сохраняем оверрайд локально
-      saveLocalCharOverride(toSave.id, toSave);
+      // 2. Сохраняем оверрайд локально (включая lore, prydwenMeta, weapons с percent, echoSets, teams)
+      const fullPayload = {
+        ...toSave,
+        __cardImage: draftCardUrl,
+        __iconImage: draftIconUrl,
+        __splashImage: draftSplashUrl,
+        __artTransforms: draftTransforms,
+      };
+      saveLocalCharOverride(toSave.id, fullPayload);
 
       const customList = getCustomCharacters();
       if (customList.some((c) => c.id === toSave.id)) {
         saveCustomCharacters(
-          customList.map((c) => (c.id === toSave.id ? toSave : c)),
+          customList.map((c) => (c.id === toSave.id ? fullPayload : c)),
         );
       }
 
-      // 3. Отправляем в Supabase вместе с 3 форматами картинок
+      // 3. Отправляем в Supabase
       if (token) {
-        await apiSaveCharacterOverride(token, toSave.id, {
-          ...(toSave as unknown as Record<string, unknown>),
-          __cardImage: draftCardUrl,
-          __iconImage: draftIconUrl,
-          __splashImage: draftSplashUrl,
-        });
+        await apiSaveCharacterOverride(
+          token,
+          toSave.id,
+          fullPayload as Record<string, unknown>,
+        );
         setServerEdits((prev) => ({
           ...prev,
-          [toSave.id]: toSave as Record<string, unknown>,
+          [toSave.id]: fullPayload as Record<string, unknown>,
         }));
       }
 
       setRefreshTick((t) => t + 1);
       notify(
         'ok',
-        `Все изменения и 3 формата картинок для «${toSave.name}» сохранены!`,
+        `Все изменения для «${toSave.name}» (ракурс картинок, лор, мета T0–T3, эхо, оружие и команды) сохранены!`,
       );
     } catch (e: any) {
       notify('err', e instanceof Error ? e.message : 'Ошибка сохранения');
@@ -719,6 +908,21 @@ export const AdminPage = () => {
     } finally {
       setBusy(false);
     }
+  };
+
+  // Смена приоритета команды (Задача 8)
+  const moveTeamPriority = (idx: number, dir: -1 | 1) => {
+    const list = Array.isArray(draftChar.teams) ? [...draftChar.teams] : [];
+    const targetIdx = idx + dir;
+    if (targetIdx < 0 || targetIdx >= list.length) return;
+    const temp = list[idx];
+    list[idx] = list[targetIdx];
+    list[targetIdx] = temp;
+    const reindexed = list.map((t: any, i: number) => ({
+      ...t,
+      priority: i + 1,
+    }));
+    setDraftChar({ ...draftChar, teams: reindexed });
   };
 
   /* ==================== ОБРАБОТЧИКИ ВКЛАДКИ 3: БЕСТИАРИЙ ==================== */
@@ -865,17 +1069,18 @@ export const AdminPage = () => {
     });
   }, [charSearch, charElFilter, refreshTick]);
 
-  // Живая карточка для превью нового персонажа (синхронизирует все 3 формата для предпросмотра)
+  // Живая карточка для превью нового персонажа
   const previewNewChar = useMemo<any>(() => {
     const previewId = slugifyName(newChar.id || newChar.name) || 'new-resonator';
     if (newCardUrl) IMAGES[previewId] = newCardUrl;
     if (newIconUrl) CHARACTER_ICONS[previewId] = newIconUrl;
     if (newSplashUrl) CHARACTER_SPLASHES[previewId] = newSplashUrl;
+    CHARACTER_ART_TRANSFORMS[previewId] = newTransforms;
     return {
       ...newChar,
       id: previewId,
     };
-  }, [newChar, newCardUrl, newIconUrl, newSplashUrl]);
+  }, [newChar, newCardUrl, newIconUrl, newSplashUrl, newTransforms]);
 
   return (
     <div className="space-y-6 pb-12 w-full animate-fade-in">
@@ -902,7 +1107,7 @@ export const AdminPage = () => {
               Панель управления Stellar Wiki
             </h1>
             <p className="text-gray-400 text-sm mt-1">
-              Загрузка 3 форматов карточек персонажей (Каталог · Мета · Баннер), конструктор билдов и Бестиарий
+              Перемещение ракурса картинок, мета T0–T3, конструктор Эхо/Оружия/Статов и Команд
             </p>
           </div>
 
@@ -950,8 +1155,8 @@ export const AdminPage = () => {
         <div className="relative z-10 flex flex-wrap gap-2 mt-6 pt-5 border-t border-white/[0.07]">
           {(
             [
-              { id: 'create-char', label: '+ Создать персонажа', icon: UserPlus },
               { id: 'edit-char', label: 'Конструктор героев (61+)', icon: Sliders },
+              { id: 'create-char', label: '+ Создать персонажа', icon: UserPlus },
               { id: 'bestiary', label: 'Бестиарий (163+)', icon: Archive },
               { id: 'cms', label: 'Новости и Гайды', icon: Newspaper },
               { id: 'database', label: 'База и Бэкап', icon: Database },
@@ -1005,7 +1210,7 @@ export const AdminPage = () => {
       )}
 
       {/* =================================================================================
-          МОДУЛЬ 1: СОЗДАНИЕ КАРТОЧКИ НОВОГО ПЕРСОНАЖА (С 3 ФОРМАТАМИ КАРТИНОК)
+          МОДУЛЬ 1: СОЗДАНИЕ КАРТОЧКИ НОВОГО ПЕРСОНАЖА
          ================================================================================= */}
       {mainTab === 'create-char' && (
         <div className="grid grid-cols-1 xl:grid-cols-[1fr,340px] gap-6 items-start">
@@ -1017,7 +1222,7 @@ export const AdminPage = () => {
                   <span>Добавить нового резонатора в базу сайта</span>
                 </h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Загрузи все 3 формата карточек (Большую вертикальную, Маленькую для Меты и Горизонтальную для страницы героя)
+                  Настрой 3 формата картинок с перетаскиванием ракурса, тиры T0–T3 и биографию
                 </p>
               </div>
             </div>
@@ -1142,58 +1347,61 @@ export const AdminPage = () => {
               </label>
             </div>
 
-            {/* Блок загрузки всех 3 форматов картинок */}
+            {/* Загрузчик 3 форматов с перетаскиванием и ползунками X/Y/Scale */}
             <TripleArtUploader
               cardUrl={newCardUrl}
               iconUrl={newIconUrl}
               splashUrl={newSplashUrl}
+              transforms={newTransforms}
               onChangeCard={setNewCardUrl}
               onChangeIcon={setNewIconUrl}
               onChangeSplash={setNewSplashUrl}
+              onChangeTransforms={setNewTransforms}
             />
 
+            {/* Тиры Prydwen T0–T3 и Базовые статы */}
             <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
               <label className="block">
-                <span className={labelCls}>Тир (Башня)</span>
+                <span className={labelCls}>Мета ToA (T0–T3)</span>
                 <select
-                  value={newChar.metaRating.tower}
+                  value={newChar.prydwenMeta?.toa ?? 'T0'}
                   onChange={(e) =>
                     setNewChar({
                       ...newChar,
-                      metaRating: {
-                        ...newChar.metaRating,
-                        tower: e.target.value as TierRank,
+                      prydwenMeta: {
+                        ...newChar.prydwenMeta,
+                        toa: e.target.value as PrydwenTier,
                       },
                     })
                   }
                   className={inputCls}
                 >
-                  {TIERS.map((t) => (
+                  {PRYDWEN_TIERS.map((t) => (
                     <option key={t} value={t}>
-                      Tier {t}
+                      {t}
                     </option>
                   ))}
                 </select>
               </label>
 
               <label className="block">
-                <span className={labelCls}>Тир (Wastes)</span>
+                <span className={labelCls}>Мета Wastes (T0–T3)</span>
                 <select
-                  value={newChar.metaRating.realm}
+                  value={newChar.prydwenMeta?.wastes ?? 'T0'}
                   onChange={(e) =>
                     setNewChar({
                       ...newChar,
-                      metaRating: {
-                        ...newChar.metaRating,
-                        realm: e.target.value as TierRank,
+                      prydwenMeta: {
+                        ...newChar.prydwenMeta,
+                        wastes: e.target.value as PrydwenTier,
                       },
                     })
                   }
                   className={inputCls}
                 >
-                  {TIERS.map((t) => (
+                  {PRYDWEN_TIERS.map((t) => (
                     <option key={t} value={t}>
-                      Tier {t}
+                      {t}
                     </option>
                   ))}
                 </select>
@@ -1259,9 +1467,9 @@ export const AdminPage = () => {
             </div>
 
             <label className="block">
-              <span className={labelCls}>Описание и Лор резонатора</span>
+              <span className={labelCls}>Лор и биография резонатора</span>
               <textarea
-                rows={3}
+                rows={4}
                 value={newChar.lore}
                 onChange={(e) => setNewChar({ ...newChar, lore: e.target.value })}
                 className={inputCls}
@@ -1281,12 +1489,11 @@ export const AdminPage = () => {
             </div>
           </div>
 
-          {/* Правая колонка: Живое превью карточки в каталоге */}
           <div className="glass-panel p-5 space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-extrabold uppercase tracking-wider text-accent-light flex items-center gap-1.5">
                 <Sparkles size={14} />
-                <span>Превью в каталоге</span>
+                <span>Живое превью карточки</span>
               </span>
               <span className="text-[11px] font-mono text-gray-400">
                 /characters/{previewNewChar.id}
@@ -1348,12 +1555,13 @@ export const AdminPage = () => {
               ))}
             </div>
 
-            <div className="space-y-1 max-h-[560px] overflow-y-auto pr-1">
+            <div className="space-y-1 max-h-[620px] overflow-y-auto pr-1">
               {filteredSidebarChars.map((c) => {
                 const isSelected = c.id === selectedCharId;
                 const isCustom = customCharsList.some((x) => x.id === c.id);
                 const isEdited =
                   Boolean(localOverridesMap[c.id]) || Boolean(serverEdits[c.id]);
+                const pMeta = PRYDWEN_CHAR_META[c.id];
 
                 return (
                   <button
@@ -1371,12 +1579,12 @@ export const AdminPage = () => {
                       initials={c.name.slice(0, 2)}
                       element={c.element}
                       variant="icon"
-                      className="w-9 h-9 aspect-square rounded-lg object-cover object-top shrink-0"
+                      className="w-9 h-9 aspect-square rounded-lg object-cover shrink-0"
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-extrabold truncate">{c.name}</p>
                       <p className="text-[10px] text-gray-400 truncate">
-                        {ELEMENTS[c.element].label} · {c.role}
+                        {ELEMENTS[c.element].label} · {pMeta?.toa ?? 'T1'}
                       </p>
                     </div>
                     {isCustom ? (
@@ -1401,13 +1609,16 @@ export const AdminPage = () => {
                   initials={draftChar.name ? draftChar.name.slice(0, 2) : 'RE'}
                   element={draftChar.element}
                   variant="icon"
-                  className="w-14 h-14 aspect-square rounded-2xl object-cover object-top"
+                  className="w-14 h-14 aspect-square rounded-2xl object-cover"
                 />
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-2xl font-black text-white">{draftChar.name}</h2>
                     <span className="px-2 py-0.5 rounded-md bg-white/10 text-xs font-mono text-gray-300">
                       {draftChar.id}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-xs font-black">
+                      {draftChar.prydwenMeta?.toa ?? 'T0'}
                     </span>
                   </div>
                   <p className="text-xs text-accent-light font-semibold mt-0.5">
@@ -1423,7 +1634,7 @@ export const AdminPage = () => {
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-bold text-gray-200"
                 >
                   <ExternalLink size={14} />
-                  <span>На страницу</span>
+                  <span>Открыть карточку</span>
                 </Link>
 
                 <button
@@ -1443,18 +1654,19 @@ export const AdminPage = () => {
                   className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] text-xs font-black shadow-lg hover:brightness-105 cursor-pointer disabled:opacity-50"
                 >
                   <Save size={15} />
-                  <span>{busy ? 'Сохранение...' : 'Сохранить в облако'}</span>
+                  <span>{busy ? 'Сохранение...' : 'Сохранить изменения'}</span>
                 </button>
               </div>
             </div>
 
+            {/* Переключатель 5 подвкладок конструктора */}
             <div className="flex flex-wrap gap-2">
               {(
                 [
-                  { id: 'general', label: '1. Основное и 3 Арта' },
-                  { id: 'gear', label: `2. Оружие (${draftChar.weapons?.length ?? 0}) и Эхо (${draftChar.echoSets?.length ?? 0})` },
-                  { id: 'skills', label: `3. Навыки (${draftChar.skills?.length ?? 0}) и Цепи S1–S6` },
-                  { id: 'teams', label: '4. Ротация, Команды и Ресурсы' },
+                  { id: 'general', label: '1. Ракурс 3 Артов, Мета (T0–T3) и Лор' },
+                  { id: 'gear', label: `2. Оружие (% пользы), Эхо (Cost/Статы) и Lv.90` },
+                  { id: 'teams', label: `3. Команды (${draftChar.teams?.length ?? 0}), Приоритет и Ресурсы` },
+                  { id: 'skills', label: `4. Навыки (${draftChar.skills?.length ?? 0}) и Цепи S1–S6` },
                   { id: 'json', label: '5. RAW JSON' },
                 ] as const
               ).map((st) => (
@@ -1478,19 +1690,147 @@ export const AdminPage = () => {
               ))}
             </div>
 
-            {/* ПОДВКЛАДКА 1: ОСНОВНОЕ И 3 ФОРМАТА КАРТИНОК */}
+            {/* ===================================================================
+                ПОДВКЛАДКА 1: 3 АРТА С ПЕРЕМЕЩЕНИЕМ, МЕТА T0–T3 И ЛОР (Задачи 1, 2, 3)
+               =================================================================== */}
             {editorSubTab === 'general' && (
-              <div className="space-y-5 animate-fade-in">
-                {/* Загрузчик 3 форматов картинок для выбранного персонажа */}
+              <div className="space-y-6 animate-fade-in">
+                {/* Загрузчик и интерактивное перемещение 3 форматов картинок (Задача 1) */}
                 <TripleArtUploader
                   cardUrl={draftCardUrl}
                   iconUrl={draftIconUrl}
                   splashUrl={draftSplashUrl}
+                  transforms={draftTransforms}
                   onChangeCard={setDraftCardUrl}
                   onChangeIcon={setDraftIconUrl}
                   onChangeSplash={setDraftSplashUrl}
+                  onChangeTransforms={setDraftTransforms}
                 />
 
+                {/* Позиция в Мете Prydwen: T0, T0.5, T1, T1.5, T2, T3 + Роль + Метки механик (Задача 3) */}
+                <div className="p-5 rounded-2xl bg-black/45 border border-amber-400/25 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-amber-300 flex items-center gap-2">
+                      <Sparkles size={15} />
+                      <span>Позиция в Мете (Prydwen T0 — T3) и Боевые метки</span>
+                    </h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <label className="block">
+                      <span className={labelCls}>Ранг в Tower of Adversity</span>
+                      <select
+                        value={draftChar.prydwenMeta?.toa ?? 'T0.5'}
+                        onChange={(e) =>
+                          setDraftChar({
+                            ...draftChar,
+                            prydwenMeta: {
+                              ...(draftChar.prydwenMeta ?? {}),
+                              toa: e.target.value as PrydwenTier,
+                            },
+                          })
+                        }
+                        className={inputCls}
+                      >
+                        {PRYDWEN_TIERS.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className={labelCls}>Ранг в Whimpering Wastes</span>
+                      <select
+                        value={draftChar.prydwenMeta?.wastes ?? 'T0.5'}
+                        onChange={(e) =>
+                          setDraftChar({
+                            ...draftChar,
+                            prydwenMeta: {
+                              ...(draftChar.prydwenMeta ?? {}),
+                              wastes: e.target.value as PrydwenTier,
+                            },
+                          })
+                        }
+                        className={inputCls}
+                      >
+                        {PRYDWEN_TIERS.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className={labelCls}>Колонка роли в тир-листе</span>
+                      <select
+                        value={draftChar.prydwenMeta?.column ?? 'Main DPS'}
+                        onChange={(e) =>
+                          setDraftChar({
+                            ...draftChar,
+                            prydwenMeta: {
+                              ...(draftChar.prydwenMeta ?? {}),
+                              column: e.target.value as PrydwenRoleCol,
+                            },
+                          })
+                        }
+                        className={inputCls}
+                      >
+                        {PRYDWEN_COLUMNS.map((col) => (
+                          <option key={col} value={col}>
+                            {col}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  {/* Выбор меток Prydwen (Chafe, Bane, Frazzle, Erosion и т.д.) */}
+                  <div>
+                    <span className={labelCls}>
+                      Подписи механик под иконкой в тир-листе (кликни, чтобы включить/выключить)
+                    </span>
+                    <div className="flex flex-wrap gap-2 mt-1.5">
+                      {PRYDWEN_MECHANIC_TAGS.map((tag) => {
+                        const currentTags: string[] = Array.isArray(
+                          draftChar.prydwenMeta?.tags,
+                        )
+                          ? draftChar.prydwenMeta.tags
+                          : [];
+                        const active = currentTags.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => {
+                              const nextTags = active
+                                ? currentTags.filter((x) => x !== tag)
+                                : [...currentTags, tag];
+                              setDraftChar({
+                                ...draftChar,
+                                prydwenMeta: {
+                                  ...(draftChar.prydwenMeta ?? {}),
+                                  tags: nextTags,
+                                },
+                              });
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase border transition-all cursor-pointer ${
+                              active
+                                ? 'bg-amber-400 text-[#09090b] border-amber-300 shadow'
+                                : 'bg-white/[0.04] text-gray-400 border-white/10 hover:text-white'
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Имя, Титул, Стихия, Оружие, Роль, Редкость */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-white/[0.08]">
                   <label className="block">
                     <span className={labelCls}>Имя персонажа</span>
@@ -1527,7 +1867,7 @@ export const AdminPage = () => {
                   </label>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <label className="block">
                     <span className={labelCls}>Стихия</span>
                     <select
@@ -1569,7 +1909,7 @@ export const AdminPage = () => {
                   </label>
 
                   <label className="block">
-                    <span className={labelCls}>Роль</span>
+                    <span className={labelCls}>Роль в карточке</span>
                     <select
                       value={draftChar.role}
                       onChange={(e) =>
@@ -1604,62 +1944,20 @@ export const AdminPage = () => {
                       <option value={4}>4★</option>
                     </select>
                   </label>
-
-                  <label className="block">
-                    <span className={labelCls}>Тир Башни</span>
-                    <select
-                      value={draftChar.metaRating?.tower ?? '-'}
-                      onChange={(e) =>
-                        setDraftChar({
-                          ...draftChar,
-                          metaRating: {
-                            ...(draftChar.metaRating ?? {}),
-                            tower: e.target.value as TierRank,
-                          },
-                        })
-                      }
-                      className={inputCls}
-                    >
-                      {TIERS.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block">
-                    <span className={labelCls}>Тир Wastes</span>
-                    <select
-                      value={draftChar.metaRating?.realm ?? '-'}
-                      onChange={(e) =>
-                        setDraftChar({
-                          ...draftChar,
-                          metaRating: {
-                            ...(draftChar.metaRating ?? {}),
-                            realm: e.target.value as TierRank,
-                          },
-                        })
-                      }
-                      className={inputCls}
-                    >
-                      {TIERS.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
                 </div>
 
+                {/* Лор и биография (Задача 2) */}
                 <label className="block">
-                  <span className={labelCls}>Лор и биография</span>
+                  <span className={labelCls}>
+                    Лор и биография (отображается в верхнем облачке карточки персонажа и во вкладке «Лор»)
+                  </span>
                   <textarea
-                    rows={3}
+                    rows={4}
                     value={draftChar.lore ?? ''}
                     onChange={(e) =>
                       setDraftChar({ ...draftChar, lore: e.target.value })
                     }
+                    placeholder="Напиши описание и биографию резонатора..."
                     className={inputCls}
                   />
                 </label>
@@ -1708,14 +2006,169 @@ export const AdminPage = () => {
               </div>
             )}
 
-            {/* ПОДВКЛАДКА 2: ОРУЖИЕ И ЭХО */}
+            {/* ===================================================================
+                ПОДВКЛАДКА 2: ОРУЖИЕ (% ПОЛЬЗЫ), ЭХО (СХЕМА COST, МЕЙН/САБ СТАТЫ) И LV.90 (Задачи 5 и 6)
+               =================================================================== */}
             {editorSubTab === 'gear' && (
-              <div className="space-y-6 animate-fade-in">
+              <div className="space-y-7 animate-fade-in">
+                {/* СЕКЦИЯ 1: БАЗОВЫЕ СТАТЫ LV.90 (для ползунка 10–90) И ЦЕЛЕВЫЕ СТАТЫ (Задача 6) */}
+                <div className="p-5 rounded-2xl bg-black/45 border border-white/10 space-y-4">
+                  <h3 className="text-sm font-black uppercase tracking-wider text-accent-light">
+                    Базовые показатели на 90 ур. (от них работает ползунок 10–90 ур.)
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <label className="block">
+                      <span className={labelCls}>Базовое HP (Lv.90)</span>
+                      <input
+                        type="number"
+                        value={draftChar.stats?.hp ?? 12450}
+                        onChange={(e) =>
+                          setDraftChar({
+                            ...draftChar,
+                            stats: {
+                              ...(draftChar.stats ?? {}),
+                              hp: Number(e.target.value),
+                            },
+                          })
+                        }
+                        className={inputCls}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className={labelCls}>Базовая ATK (Lv.90)</span>
+                      <input
+                        type="number"
+                        value={draftChar.stats?.atk ?? 435}
+                        onChange={(e) =>
+                          setDraftChar({
+                            ...draftChar,
+                            stats: {
+                              ...(draftChar.stats ?? {}),
+                              atk: Number(e.target.value),
+                            },
+                          })
+                        }
+                        className={inputCls}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className={labelCls}>Базовая DEF (Lv.90)</span>
+                      <input
+                        type="number"
+                        value={draftChar.stats?.def ?? 1180}
+                        onChange={(e) =>
+                          setDraftChar({
+                            ...draftChar,
+                            stats: {
+                              ...(draftChar.stats ?? {}),
+                              def: Number(e.target.value),
+                            },
+                          })
+                        }
+                        className={inputCls}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className={labelCls}>Базовый ER (%)</span>
+                      <input
+                        type="number"
+                        value={draftChar.stats?.energyRegen ?? 120}
+                        onChange={(e) =>
+                          setDraftChar({
+                            ...draftChar,
+                            stats: {
+                              ...(draftChar.stats ?? {}),
+                              energyRegen: Number(e.target.value),
+                            },
+                          })
+                        }
+                        className={inputCls}
+                      />
+                    </label>
+                  </div>
+
+                  {/* Целевые показатели статов (Target Stats) */}
+                  <div className="space-y-2.5 pt-3 border-t border-white/[0.08]">
+                    <div className="flex items-center justify-between">
+                      <span className={labelCls}>
+                        Целевые показатели статов на 90 ур. (например: Crit Rate 70–80%)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraftChar({
+                            ...draftChar,
+                            targetStats: [
+                              ...(draftChar.targetStats ?? []),
+                              { name: 'Новый стат', value: '100%', note: '' },
+                            ],
+                          })
+                        }
+                        className="flex items-center gap-1 px-3 py-1 rounded-xl bg-accent/20 text-accent-light text-xs font-extrabold cursor-pointer"
+                      >
+                        <Plus size={13} /> Добавить целевой стат
+                      </button>
+                    </div>
+
+                    {(draftChar.targetStats ?? []).map((ts: any, idx: number) => (
+                      <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <input
+                          value={ts.name || ts.stat || ''}
+                          onChange={(e) => {
+                            const next = [...(draftChar.targetStats ?? [])];
+                            next[idx] = { ...ts, name: e.target.value, stat: e.target.value };
+                            setDraftChar({ ...draftChar, targetStats: next });
+                          }}
+                          placeholder="Характеристика (Crit Rate)"
+                          className={inputCls}
+                        />
+                        <input
+                          value={ts.value ?? ''}
+                          onChange={(e) => {
+                            const next = [...(draftChar.targetStats ?? [])];
+                            next[idx] = { ...ts, value: e.target.value };
+                            setDraftChar({ ...draftChar, targetStats: next });
+                          }}
+                          placeholder="Значение (70–80%)"
+                          className={inputCls}
+                        />
+                        <div className="flex gap-2">
+                          <input
+                            value={ts.note ?? ''}
+                            onChange={(e) => {
+                              const next = [...(draftChar.targetStats ?? [])];
+                              next[idx] = { ...ts, note: e.target.value };
+                              setDraftChar({ ...draftChar, targetStats: next });
+                            }}
+                            placeholder="Заметка (Приоритет)"
+                            className={inputCls}
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDraftChar({
+                                ...draftChar,
+                                targetStats: draftChar.targetStats.filter(
+                                  (_: any, i: number) => i !== idx,
+                                ),
+                              })
+                            }
+                            className="p-2 text-gray-500 hover:text-rose-400 cursor-pointer"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* СЕКЦИЯ 2: РЕКОМЕНДУЕМОЕ ОРУЖИЕ С % ПОЛЬЗЫ (Задача 5) */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-black uppercase tracking-wider text-accent-light flex items-center gap-2">
                       <Swords size={15} />
-                      <span>Рекомендуемое оружие ({draftChar.weapons?.length ?? 0})</span>
+                      <span>Рекомендуемое оружие и % пользы ({draftChar.weapons?.length ?? 0})</span>
                     </h3>
                     <button
                       type="button"
@@ -1726,11 +2179,14 @@ export const AdminPage = () => {
                             ...(draftChar.weapons ?? []),
                             {
                               name: 'Новое оружие',
+                              stat: 'Crit Rate 24.3%',
+                              percent: 90,
                               passive: 'Описание пассивного эффекта',
                               isBest: false,
                               rank: (draftChar.weapons?.length ?? 0) + 1,
+                              note: 'Альтернатива',
                             },
-                          ] as any[],
+                          ],
                         })
                       }
                       className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-accent/20 text-accent-light text-xs font-extrabold cursor-pointer"
@@ -1744,30 +2200,73 @@ export const AdminPage = () => {
                       key={idx}
                       className="p-4 rounded-2xl bg-black/40 border border-white/[0.07] space-y-3"
                     >
-                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                        <input
-                          value={w.name ?? ''}
-                          onChange={(e) => {
-                            const next = [...draftChar.weapons];
-                            next[idx] = { ...w, name: e.target.value };
-                            setDraftChar({ ...draftChar, weapons: next });
-                          }}
-                          placeholder="Название оружия"
-                          className={`${inputCls} sm:col-span-2`}
-                        />
-                        <div className="flex items-center gap-2 sm:col-span-2">
-                          <label className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#090b12] border border-white/12 text-xs text-gray-300 font-bold cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(w.isBest)}
-                              onChange={(e) => {
-                                const next = [...draftChar.weapons];
-                                next[idx] = { ...w, isBest: e.target.checked };
-                                setDraftChar({ ...draftChar, weapons: next });
-                              }}
-                            />
-                            <span>Топ</span>
-                          </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                        <label className="block sm:col-span-4">
+                          <span className={labelCls}>Название оружия</span>
+                          <input
+                            value={w.name ?? ''}
+                            onChange={(e) => {
+                              const next = [...draftChar.weapons];
+                              next[idx] = { ...w, name: e.target.value };
+                              setDraftChar({ ...draftChar, weapons: next });
+                            }}
+                            placeholder="Red Spring"
+                            className={inputCls}
+                          />
+                        </label>
+
+                        <label className="block sm:col-span-3">
+                          <span className={labelCls}>Главный стат</span>
+                          <input
+                            value={w.stat ?? ''}
+                            onChange={(e) => {
+                              const next = [...draftChar.weapons];
+                              next[idx] = { ...w, stat: e.target.value };
+                              setDraftChar({ ...draftChar, weapons: next });
+                            }}
+                            placeholder="Crit Rate 24.3%"
+                            className={inputCls}
+                          />
+                        </label>
+
+                        <label className="block sm:col-span-2">
+                          <span className="block text-[11px] font-extrabold uppercase tracking-wider text-amber-300 mb-1.5">
+                            % Пользы
+                          </span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={150}
+                            value={
+                              typeof w.percent === 'number'
+                                ? w.percent
+                                : idx === 0
+                                ? 100
+                                : Math.max(70, 100 - idx * 8)
+                            }
+                            onChange={(e) => {
+                              const next = [...draftChar.weapons];
+                              next[idx] = {
+                                ...w,
+                                percent: Number(e.target.value),
+                              };
+                              setDraftChar({ ...draftChar, weapons: next });
+                            }}
+                            className={inputCls}
+                          />
+                        </label>
+
+                        <div className="sm:col-span-3 flex items-center gap-2">
+                          <input
+                            value={w.note ?? ''}
+                            onChange={(e) => {
+                              const next = [...draftChar.weapons];
+                              next[idx] = { ...w, note: e.target.value };
+                              setDraftChar({ ...draftChar, weapons: next });
+                            }}
+                            placeholder="BiS / F2P"
+                            className={inputCls}
+                          />
                           <button
                             type="button"
                             onClick={() =>
@@ -1778,12 +2277,13 @@ export const AdminPage = () => {
                                 ),
                               })
                             }
-                            className="p-2 text-gray-500 hover:text-rose-400 cursor-pointer"
+                            className="p-2.5 text-gray-500 hover:text-rose-400 cursor-pointer shrink-0"
                           >
                             <Trash2 size={16} />
                           </button>
                         </div>
                       </div>
+
                       <input
                         value={w.passive ?? ''}
                         onChange={(e) => {
@@ -1798,11 +2298,14 @@ export const AdminPage = () => {
                   ))}
                 </div>
 
+                {/* СЕКЦИЯ 3: ЛУЧШИЕ НАБОРЫ ЭХО (Схема Cost, Мейн-статы Cost 4/3/1, Приоритет саб-статов) (Задача 6) */}
                 <div className="space-y-3 pt-4 border-t border-white/[0.08]">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-black uppercase tracking-wider text-accent-light flex items-center gap-2">
                       <Layers size={15} />
-                      <span>Наборы Эхо ({draftChar.echoSets?.length ?? 0})</span>
+                      <span>
+                        Лучшие наборы Эхо: Схема Cost, Мейн-статы и Приоритет саб-статов ({draftChar.echoSets?.length ?? 0})
+                      </span>
                     </h3>
                     <button
                       type="button"
@@ -1814,10 +2317,16 @@ export const AdminPage = () => {
                             {
                               name: 'Новый набор Эхо (5pc)',
                               cost4: 'Главное Эхо Cost 4',
+                              costLayout: '4-3-3-1-1',
+                              cost4Main: 'Crit Rate / Crit DMG',
+                              cost3Main: `${draftChar.element} DMG% / ATK%`,
+                              cost1Main: 'ATK% / ATK%',
+                              substatsPriority:
+                                'Crit Rate = Crit DMG > ATK% > Energy Regen',
                               description: 'Описание бонуса 2pc и 5pc',
                               substats: ['Crit Rate', 'Crit DMG', 'ATK%'],
                             },
-                          ] as any[],
+                          ],
                         })
                       }
                       className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-accent/20 text-accent-light text-xs font-extrabold cursor-pointer"
@@ -1832,27 +2341,50 @@ export const AdminPage = () => {
                       className="p-4 rounded-2xl bg-black/40 border border-white/[0.07] space-y-3"
                     >
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <input
-                          value={es.name ?? ''}
-                          onChange={(e) => {
-                            const next = [...draftChar.echoSets];
-                            next[idx] = { ...es, name: e.target.value };
-                            setDraftChar({ ...draftChar, echoSets: next });
-                          }}
-                          placeholder="Название сета (Frosty Resolve)"
-                          className={inputCls}
-                        />
-                        <input
-                          value={es.cost4 ?? ''}
-                          onChange={(e) => {
-                            const next = [...draftChar.echoSets];
-                            next[idx] = { ...es, cost4: e.target.value };
-                            setDraftChar({ ...draftChar, echoSets: next });
-                          }}
-                          placeholder="Главное Эхо (Cost 4)"
-                          className={inputCls}
-                        />
-                        <div className="flex gap-2">
+                        <label className="block">
+                          <span className={labelCls}>Название набора Эхо</span>
+                          <input
+                            value={es.name ?? ''}
+                            onChange={(e) => {
+                              const next = [...draftChar.echoSets];
+                              next[idx] = { ...es, name: e.target.value };
+                              setDraftChar({ ...draftChar, echoSets: next });
+                            }}
+                            placeholder="Sun-sinking Eclipse (5pc)"
+                            className={inputCls}
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className={labelCls}>Главное Эхо в 1-м слоте (Cost 4)</span>
+                          <input
+                            value={es.cost4 ?? ''}
+                            onChange={(e) => {
+                              const next = [...draftChar.echoSets];
+                              next[idx] = { ...es, cost4: e.target.value };
+                              setDraftChar({ ...draftChar, echoSets: next });
+                            }}
+                            placeholder="Nightmare: Crownless"
+                            className={inputCls}
+                          />
+                        </label>
+
+                        <div className="flex items-end gap-2">
+                          <label className="block flex-1">
+                            <span className="block text-[11px] font-extrabold uppercase tracking-wider text-amber-300 mb-1.5">
+                              Схема Cost
+                            </span>
+                            <input
+                              value={es.costLayout ?? '4-3-3-1-1'}
+                              onChange={(e) => {
+                                const next = [...draftChar.echoSets];
+                                next[idx] = { ...es, costLayout: e.target.value };
+                                setDraftChar({ ...draftChar, echoSets: next });
+                              }}
+                              placeholder="4-3-3-1-1 или 4-4-1-1-1"
+                              className={inputCls}
+                            />
+                          </label>
                           <button
                             type="button"
                             onClick={() =>
@@ -1863,29 +2395,449 @@ export const AdminPage = () => {
                                 ),
                               })
                             }
-                            className="p-2 text-gray-500 hover:text-rose-400 cursor-pointer ml-auto"
+                            className="p-2.5 text-gray-500 hover:text-rose-400 cursor-pointer"
                           >
                             <Trash2 size={16} />
                           </button>
                         </div>
                       </div>
-                      <input
-                        value={es.description ?? ''}
-                        onChange={(e) => {
-                          const next = [...draftChar.echoSets];
-                          next[idx] = { ...es, description: e.target.value };
-                          setDraftChar({ ...draftChar, echoSets: next });
-                        }}
-                        placeholder="Эффект набора"
-                        className={inputCls}
-                      />
+
+                      {/* Мейн-статы по Cost 4 / Cost 3 / Cost 1 */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <label className="block">
+                          <span className={labelCls}>Мейн-стат Cost 4</span>
+                          <input
+                            value={es.cost4Main ?? 'Crit Rate / Crit DMG'}
+                            onChange={(e) => {
+                              const next = [...draftChar.echoSets];
+                              next[idx] = { ...es, cost4Main: e.target.value };
+                              setDraftChar({ ...draftChar, echoSets: next });
+                            }}
+                            placeholder="Crit Rate / Crit DMG"
+                            className={inputCls}
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className={labelCls}>Мейн-стат Cost 3</span>
+                          <input
+                            value={
+                              es.cost3Main ?? `${draftChar.element} DMG% / ATK%`
+                            }
+                            onChange={(e) => {
+                              const next = [...draftChar.echoSets];
+                              next[idx] = { ...es, cost3Main: e.target.value };
+                              setDraftChar({ ...draftChar, echoSets: next });
+                            }}
+                            placeholder="Havoc DMG% / ATK%"
+                            className={inputCls}
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className={labelCls}>Мейн-стат Cost 1</span>
+                          <input
+                            value={es.cost1Main ?? 'ATK%'}
+                            onChange={(e) => {
+                              const next = [...draftChar.echoSets];
+                              next[idx] = { ...es, cost1Main: e.target.value };
+                              setDraftChar({ ...draftChar, echoSets: next });
+                            }}
+                            placeholder="ATK% / HP%"
+                            className={inputCls}
+                          />
+                        </label>
+                      </div>
+
+                      {/* Приоритет саб-статов */}
+                      <label className="block">
+                        <span className={labelCls}>Приоритет саб-статов</span>
+                        <input
+                          value={
+                            es.substatsPriority ??
+                            (Array.isArray(es.substats)
+                              ? es.substats.join(' > ')
+                              : 'Crit Rate = Crit DMG > ATK% > Energy Regen')
+                          }
+                          onChange={(e) => {
+                            const next = [...draftChar.echoSets];
+                            next[idx] = {
+                              ...es,
+                              substatsPriority: e.target.value,
+                            };
+                            setDraftChar({ ...draftChar, echoSets: next });
+                          }}
+                          placeholder="Crit Rate = Crit DMG > ATK% > Basic Attack DMG% > ER%"
+                          className={inputCls}
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className={labelCls}>Описание бонуса сета</span>
+                        <input
+                          value={es.description || es.effect || ''}
+                          onChange={(e) => {
+                            const next = [...draftChar.echoSets];
+                            next[idx] = {
+                              ...es,
+                              description: e.target.value,
+                              effect: e.target.value,
+                            };
+                            setDraftChar({ ...draftChar, echoSets: next });
+                          }}
+                          placeholder="Эффект набора 2pc / 5pc"
+                          className={inputCls}
+                        />
+                      </label>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* ПОДВКЛАДКА 3: НАВЫКИ И СОЗВЕЗДИЯ S1–S6 */}
+            {/* ===================================================================
+                ПОДВКЛАДКА 3: КОМАНДЫ, МЕТКИ КОМАНДЫ И ПРИОРИТЕТ КОМАНДЫ (Задачи 7 и 8)
+               =================================================================== */}
+            {editorSubTab === 'teams' && (
+              <div className="space-y-6 animate-fade-in">
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-black uppercase tracking-wider text-accent-light flex items-center gap-2">
+                        <Users size={16} />
+                        <span>
+                          Команды персонажа, Метки и Приоритет ({draftChar.teams?.length ?? 0})
+                        </span>
+                      </h3>
+                      <p className="text-xs text-gray-400">
+                        Добавляй отряды, выбирай 3 героев, ставь метки команды и меняй приоритет стрелками ↑ / ↓
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraftChar({
+                          ...draftChar,
+                          teams: [
+                            ...(draftChar.teams ?? []),
+                            {
+                              name: `Отряд #${(draftChar.teams?.length ?? 0) + 1}`,
+                              priority: (draftChar.teams?.length ?? 0) + 1,
+                              tags: ['Hypercarry'],
+                              members: [draftChar.id, 'roccia', 'shorekeeper'],
+                              note: 'Описание ротации и синергии команды',
+                            },
+                          ],
+                        })
+                      }
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] text-xs font-black cursor-pointer"
+                    >
+                      <Plus size={15} />
+                      <span>Добавить команду</span>
+                    </button>
+                  </div>
+
+                  {(draftChar.teams ?? []).map((team: any, idx: number) => {
+                    const members: string[] = Array.isArray(team.members)
+                      ? team.members
+                      : [draftChar.id, '', ''];
+                    const tags: string[] = Array.isArray(team.tags) ? team.tags : [];
+
+                    return (
+                      <div
+                        key={idx}
+                        className="p-5 rounded-2xl bg-black/45 border border-white/10 space-y-4"
+                      >
+                        {/* Верхняя строка: Приоритет команды (↑ / ↓) + Название команды + Удаление */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/[0.07]">
+                          <div className="flex items-center gap-2">
+                            <span className="px-3 py-1.5 rounded-xl bg-amber-400 text-[#09090b] text-xs font-black">
+                              Приоритет #{team.priority ?? idx + 1}
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={() => moveTeamPriority(idx, -1)}
+                              disabled={idx === 0}
+                              className="p-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-gray-200 disabled:opacity-30 cursor-pointer"
+                              title="Повысить приоритет команды"
+                            >
+                              <ArrowUp size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveTeamPriority(idx, 1)}
+                              disabled={idx === (draftChar.teams?.length ?? 1) - 1}
+                              className="p-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-gray-200 disabled:opacity-30 cursor-pointer"
+                              title="Понизить приоритет команды"
+                            >
+                              <ArrowDown size={14} />
+                            </button>
+                          </div>
+
+                          <div className="flex-1 min-w-[220px]">
+                            <input
+                              value={team.name ?? ''}
+                              onChange={(e) => {
+                                const next = [...draftChar.teams];
+                                next[idx] = { ...team, name: e.target.value };
+                                setDraftChar({ ...draftChar, teams: next });
+                              }}
+                              placeholder="Название команды (например: Camellya Crimson Hypercarry)"
+                              className={inputCls}
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDraftChar({
+                                ...draftChar,
+                                teams: draftChar.teams.filter(
+                                  (_: any, i: number) => i !== idx,
+                                ),
+                              })
+                            }
+                            className="p-2 text-gray-500 hover:text-rose-400 cursor-pointer"
+                            title="Удалить команду"
+                          >
+                            <Trash2 size={17} />
+                          </button>
+                        </div>
+
+                        {/* Выбор 3 участников команды */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {[0, 1, 2].map((slotIdx) => (
+                            <label key={slotIdx} className="block">
+                              <span className={labelCls}>
+                                Слот {slotIdx + 1}{' '}
+                                {slotIdx === 0
+                                  ? '(Main DPS)'
+                                  : slotIdx === 1
+                                  ? '(Sub DPS / Amp)'
+                                  : '(Support / Sustain)'}
+                              </span>
+                              <select
+                                value={members[slotIdx] ?? ''}
+                                onChange={(e) => {
+                                  const nextMembers = [...members];
+                                  nextMembers[slotIdx] = e.target.value;
+                                  const nextTeams = [...draftChar.teams];
+                                  nextTeams[idx] = {
+                                    ...team,
+                                    members: nextMembers,
+                                  };
+                                  setDraftChar({ ...draftChar, teams: nextTeams });
+                                }}
+                                className={inputCls}
+                              >
+                                <option value="">— Выбери резонатора —</option>
+                                {CHARACTERS.map((ch) => (
+                                  <option key={ch.id} value={ch.id}>
+                                    {ch.name} ({ELEMENTS[ch.element].label})
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ))}
+                        </div>
+
+                        {/* Метки команды (Задача 7) */}
+                        <div className="space-y-2">
+                          <span className={labelCls}>
+                            Метки команды (кликни для выбора или добавь свою метку)
+                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {TEAM_PRESET_TAGS.map((tTag) => {
+                              const active = tags.includes(tTag);
+                              return (
+                                <button
+                                  key={tTag}
+                                  type="button"
+                                  onClick={() => {
+                                    const nextTags = active
+                                      ? tags.filter((x) => x !== tTag)
+                                      : [...tags, tTag];
+                                    const nextTeams = [...draftChar.teams];
+                                    nextTeams[idx] = { ...team, tags: nextTags };
+                                    setDraftChar({
+                                      ...draftChar,
+                                      teams: nextTeams,
+                                    });
+                                  }}
+                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold border transition-all cursor-pointer ${
+                                    active
+                                      ? 'bg-accent/30 text-accent-light border-accent'
+                                      : 'bg-white/[0.04] text-gray-400 border-white/10 hover:text-white'
+                                  }`}
+                                >
+                                  {tTag}
+                                </button>
+                              );
+                            })}
+
+                            {/* Отображение кастомных меток */}
+                            {tags
+                              .filter((x) => !TEAM_PRESET_TAGS.includes(x))
+                              .map((customT) => (
+                                <button
+                                  key={customT}
+                                  type="button"
+                                  onClick={() => {
+                                    const nextTags = tags.filter(
+                                      (x) => x !== customT,
+                                    );
+                                    const nextTeams = [...draftChar.teams];
+                                    nextTeams[idx] = { ...team, tags: nextTags };
+                                    setDraftChar({
+                                      ...draftChar,
+                                      teams: nextTeams,
+                                    });
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-400/40 cursor-pointer"
+                                >
+                                  {customT} ×
+                                </button>
+                              ))}
+                          </div>
+
+                          <div className="flex gap-2 max-w-sm pt-1">
+                            <input
+                              type="text"
+                              value={customTeamTagInput}
+                              onChange={(e) =>
+                                setCustomTeamTagInput(e.target.value)
+                              }
+                              placeholder="Своя метка (например: S0R1)..."
+                              className={inputCls}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const val = customTeamTagInput.trim();
+                                if (!val) return;
+                                const nextTags = tags.includes(val)
+                                  ? tags
+                                  : [...tags, val];
+                                const nextTeams = [...draftChar.teams];
+                                nextTeams[idx] = { ...team, tags: nextTags };
+                                setDraftChar({ ...draftChar, teams: nextTeams });
+                                setCustomTeamTagInput('');
+                              }}
+                              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-white shrink-0 cursor-pointer"
+                            >
+                              + Метка
+                            </button>
+                          </div>
+                        </div>
+
+                        <label className="block">
+                          <span className={labelCls}>
+                            Описание синергии и ротации команды
+                          </span>
+                          <textarea
+                            rows={2}
+                            value={team.note || team.description || ''}
+                            onChange={(e) => {
+                              const next = [...draftChar.teams];
+                              next[idx] = {
+                                ...team,
+                                note: e.target.value,
+                                description: e.target.value,
+                              };
+                              setDraftChar({ ...draftChar, teams: next });
+                            }}
+                            placeholder="Как работает эта пачка и какие баффы передаются..."
+                            className={inputCls}
+                          />
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Материалы вознесения */}
+                <div className="space-y-3 pt-4 border-t border-white/[0.08]">
+                  <div className="flex items-center justify-between">
+                    <span className={labelCls}>Материалы вознесения</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraftChar({
+                          ...draftChar,
+                          materials: [
+                            ...(draftChar.materials ?? []),
+                            { type: 'Ascension', name: 'Новый материал', count: '46' },
+                          ],
+                        })
+                      }
+                      className="text-xs font-extrabold text-accent-light hover:underline cursor-pointer"
+                    >
+                      + Добавить ресурс
+                    </button>
+                  </div>
+
+                  {draftChar.materials?.map((m: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 animate-fade-in"
+                    >
+                      <select
+                        value={m.type}
+                        onChange={(e) => {
+                          const next = [...draftChar.materials];
+                          next[idx] = { ...m, type: e.target.value as any };
+                          setDraftChar({ ...draftChar, materials: next });
+                        }}
+                        className={inputCls}
+                      >
+                        <option value="Ascension">Босс / Диковинка (Ascension)</option>
+                        <option value="Forte">Недельный / Форте (Forte)</option>
+                        <option value="Skill">Навыки / Враги (Skill)</option>
+                      </select>
+                      <input
+                        value={m.name ?? ''}
+                        onChange={(e) => {
+                          const next = [...draftChar.materials];
+                          next[idx] = { ...m, name: e.target.value };
+                          setDraftChar({ ...draftChar, materials: next });
+                        }}
+                        placeholder="Название материала"
+                        className={`${inputCls} sm:col-span-2`}
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          value={m.count ?? ''}
+                          onChange={(e) => {
+                            const next = [...draftChar.materials];
+                            next[idx] = { ...m, count: e.target.value };
+                            setDraftChar({ ...draftChar, materials: next });
+                          }}
+                          placeholder="Кол-во"
+                          className={inputCls}
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDraftChar({
+                              ...draftChar,
+                              materials: draftChar.materials.filter(
+                                (_: any, i: number) => i !== idx,
+                              ),
+                            })
+                          }
+                          className="p-2 text-gray-500 hover:text-rose-400 cursor-pointer"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ПОДВКЛАДКА 4: НАВЫКИ И СОЗВЕЗДИЯ S1–S6 */}
             {editorSubTab === 'skills' && (
               <div className="space-y-6 animate-fade-in">
                 <div className="space-y-3">
@@ -1905,7 +2857,7 @@ export const AdminPage = () => {
                               name: 'Новый навык',
                               description: 'Описание механики навыка',
                             },
-                          ] as any[],
+                          ],
                         })
                       }
                       className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-accent/20 text-accent-light text-xs font-extrabold cursor-pointer"
@@ -1991,7 +2943,7 @@ export const AdminPage = () => {
                               name: `Цепь S${(draftChar.constellations?.length ?? 0) + 1}`,
                               description: 'Описание бонуса созвездия',
                             },
-                          ] as any[],
+                          ],
                         })
                       }
                       className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 text-xs font-extrabold cursor-pointer"
@@ -2043,118 +2995,6 @@ export const AdminPage = () => {
                         }}
                         className={inputCls}
                       />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ПОДВКЛАДКА 4: РОТАЦИЯ, КОМАНДЫ И РЕСУРСЫ */}
-            {editorSubTab === 'teams' && (
-              <div className="space-y-5 animate-fade-in">
-                <label className="block">
-                  <span className={labelCls}>
-                    Пошаговая ротация (каждый шаг с новой строки)
-                  </span>
-                  <textarea
-                    rows={5}
-                    value={
-                      draftChar.rotation
-                        ? draftChar.rotation
-                            .map((r: any) =>
-                              typeof r === 'string' ? r : r.description ?? r.step ?? '',
-                            )
-                            .join('\n')
-                        : ''
-                    }
-                    onChange={(e) =>
-                      setDraftChar({
-                        ...draftChar,
-                        rotation: e.target.value
-                          .split('\n')
-                          .map((s) => s.trim())
-                          .filter(Boolean)
-                          .map((str) => ({ step: str, description: str })),
-                      })
-                    }
-                    className={inputCls}
-                  />
-                </label>
-
-                <div className="space-y-3 pt-3 border-t border-white/[0.08]">
-                  <div className="flex items-center justify-between">
-                    <span className={labelCls}>Материалы вознесения</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setDraftChar({
-                          ...draftChar,
-                          materials: [
-                            ...(draftChar.materials ?? []),
-                            { type: 'Ascension', name: 'Новый материал', count: '46' },
-                          ] as any[],
-                        })
-                      }
-                      className="text-xs font-extrabold text-accent-light hover:underline cursor-pointer"
-                    >
-                      + Добавить ресурс
-                    </button>
-                  </div>
-
-                  {draftChar.materials?.map((m: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 animate-fade-in"
-                    >
-                      <select
-                        value={m.type}
-                        onChange={(e) => {
-                          const next = [...draftChar.materials];
-                          next[idx] = { ...m, type: e.target.value as any };
-                          setDraftChar({ ...draftChar, materials: next });
-                        }}
-                        className={inputCls}
-                      >
-                        <option value="Ascension">Босс (Ascension)</option>
-                        <option value="Forte">Недельный / Форте (Forte)</option>
-                        <option value="Skill">Навыки / Враги (Skill)</option>
-                      </select>
-                      <input
-                        value={m.name ?? ''}
-                        onChange={(e) => {
-                          const next = [...draftChar.materials];
-                          next[idx] = { ...m, name: e.target.value };
-                          setDraftChar({ ...draftChar, materials: next });
-                        }}
-                        placeholder="Название материала"
-                        className={`${inputCls} sm:col-span-2`}
-                      />
-                      <div className="flex gap-2">
-                        <input
-                          value={m.count ?? ''}
-                          onChange={(e) => {
-                            const next = [...draftChar.materials];
-                            next[idx] = { ...m, count: e.target.value };
-                            setDraftChar({ ...draftChar, materials: next });
-                          }}
-                          placeholder="Кол-во"
-                          className={inputCls}
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDraftChar({
-                              ...draftChar,
-                              materials: draftChar.materials.filter(
-                                (_: any, i: number) => i !== idx,
-                              ),
-                            })
-                          }
-                          className="p-2 text-gray-500 hover:text-rose-400 cursor-pointer"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
                     </div>
                   ))}
                 </div>

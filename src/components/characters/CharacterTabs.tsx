@@ -1,650 +1,759 @@
-// Вкладки страницы персонажа: Инфо / Мета / Билд / Команды / Прокачка
+// Вкладки детальной страницы персонажа (/characters/:id):
+// 1) Статы с ползунком уровней (10–90 ур., шаг 10) + Целевые показатели статов 90 ур.
+// 2) Лучшие наборы Эхо (Схема Cost, Мейн-статы Cost 4/3/1, Приоритет саб-статов)
+// 3) Оружие с редактируемым % пользы
+// 4) Команды с приоритетом (#1, #2...) и метками команды
+// 5) Лор и биография (без блока «Оптимальный боевой цикл»)
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Hammer, Sparkles, ShieldAlert, CheckCircle2, Clock } from 'lucide-react';
+import {
+  Swords,
+  Layers,
+  Sparkles,
+  Users,
+  CheckCircle2,
+  AlertTriangle,
+  Sliders,
+  BookOpen,
+  Gem,
+  Shield,
+} from 'lucide-react';
+import { Character } from '../../data/types';
 import { getCharacterById } from '../../data/characters';
 import { ImagePlaceholder } from '../ui/ImagePlaceholder';
-import { LORE } from '../../data/lore';
-import { TEAM_ROTATIONS } from '../../data/teamRotations';
-import { BuildSharer } from './BuildSharer';
-import { useState } from 'react';
-import { getCharacterTheme, TIER_STYLES } from '../../utils/constants';
-import type { Character, TargetStat, SkillPriority } from '../../data/types';
+import { PRYDWEN_TAG_COLORS } from '../../data/prydwenMeta';
 
-export const SectionTitle = ({ children }: { children: React.ReactNode }) => (
-  <div className="flex items-center gap-2.5 mb-4">
-    <span className="w-1 h-5 rounded-full bg-gradient-to-b from-accent-light to-accent" />
-    <h3 className="text-lg sm:text-xl font-bold text-ivory tracking-tight">{children}</h3>
-  </div>
-);
-
-/* ---------- Умные заглушки по роли ---------- */
-const ROLE_TARGET_STATS: Record<string, TargetStat[]> = {
-  'Main DPS': [
-    { label: 'Crit Rate', value: '70%+' },
-    { label: 'Crit DMG', value: '200–240%' },
-    { label: 'ATK', value: '2200+' },
-    { label: 'Energy Regen', value: '115–125%' },
-  ],
-  'Sub DPS': [
-    { label: 'Crit Rate', value: '65%+' },
-    { label: 'Crit DMG', value: '180–210%' },
-    { label: 'ATK', value: '1900+' },
-    { label: 'Energy Regen', value: '125–140%' },
-  ],
-  Support: [
-    { label: 'Energy Regen', value: '150%+' },
-    { label: 'HP', value: '22000+' },
-    { label: 'ATK', value: '1600+' },
-    { label: 'DEF', value: '1000+' },
-  ],
-  Healer: [
-    { label: 'Energy Regen', value: '160%+' },
-    { label: 'HP', value: '25000+' },
-    { label: 'Healing Bonus', value: '30%+' },
-    { label: 'ATK', value: '1500+' },
-  ],
-  Defender: [
-    { label: 'HP', value: '26000+' },
-    { label: 'DEF', value: '1200+' },
-    { label: 'Energy Regen', value: '135%+' },
-    { label: 'Crit Rate', value: '50%+' },
-  ],
+// Коэффициенты роста базовых статов от 10 до 90 уровня в Wuthering Waves
+const LEVEL_MULTIPLIERS: Record<number, number> = {
+  10: 0.16,
+  20: 0.26,
+  30: 0.37,
+  40: 0.48,
+  50: 0.6,
+  60: 0.71,
+  70: 0.81,
+  80: 0.9,
+  90: 1.0,
 };
 
-const ROLE_SKILL_PRIORITY: Record<string, SkillPriority[]> = {
-  'Main DPS': [
-    { name: 'Forte Circuit & Resonance Liberation', note: 'главный источник взрывного урона' },
-    { name: 'Resonance Skill', note: 'генерация стаков и энергии' },
-    { name: 'Basic Attack', note: 'основная комбо-ротация на поле' },
-    { name: 'Intro / Outro', note: 'в последнюю очередь' },
-  ],
-  'Sub DPS': [
-    { name: 'Resonance Liberation', note: 'основной офф-филд урон' },
-    { name: 'Resonance Skill', note: 'быстрый набор Concerto-энергии' },
-    { name: 'Intro / Outro', note: 'ключевой бафф для мейн-керри' },
-    { name: 'Basic Attack', note: 'минимальный приоритет' },
-  ],
-  Support: [
-    { name: 'Resonance Liberation', note: 'командный бафф и выживаемость' },
-    { name: 'Forte Circuit', note: 'пассивные усиления отряда' },
-    { name: 'Resonance Skill', note: 'быстрая подкачка энергии' },
-    { name: 'Basic Attack', note: 'не требует вложений' },
-  ],
-  Healer: [
-    { name: 'Resonance Liberation', note: 'исцеляющее поле и бафф отряда' },
-    { name: 'Forte Circuit', note: 'мгновенное лечение и щиты' },
-    { name: 'Resonance Skill', note: 'восстановление энергии' },
-    { name: 'Basic Attack', note: 'не требует вложений' },
-  ],
-  Defender: [
-    { name: 'Forte Circuit & Resonance Skill', note: 'прочность щита и контратаки' },
-    { name: 'Resonance Liberation', note: 'контроль области и защита' },
-    { name: 'Intro / Outro', note: 'снижение входящего урона' },
-    { name: 'Basic Attack', note: 'не требует вложений' },
-  ],
-};
+export const CharacterTabs = ({ character }: { character: Character }) => {
+  const charAny = character as any;
 
-/* ========== ВКЛАДКА: ИНФО ========== */
-export const InfoTab = ({ char }: { char: Character }) => {
-  const theme = getCharacterTheme(char);
-  const lore = LORE[char.id];
+  const [activeTab, setActiveTab] = useState<
+    'build' | 'skills' | 'teams' | 'materials'
+  >('build');
+
+  // Ползунок уровня персонажа: от 10 до 90 с шагом 10
+  const [previewLevel, setPreviewLevel] = useState<number>(90);
+
+  // Базовые статы на 90 уровне (редактируются в админке)
+  const baseStats90 = useMemo(() => {
+    const raw = charAny.stats ?? {};
+    return {
+      hp: Number(raw.hp) || (character.rarity === 5 ? 12450 : 10800),
+      atk: Number(raw.atk) || (character.rarity === 5 ? 435 : 375),
+      def: Number(raw.def) || (character.rarity === 5 ? 1180 : 1040),
+      energyRegen: Number(raw.energyRegen) || 120,
+    };
+  }, [charAny.stats, character.rarity]);
+
+  // Пересчёт статов под выбранный ползунком уровень (10..90)
+  const scaledStats = useMemo(() => {
+    const mult = LEVEL_MULTIPLIERS[previewLevel] ?? 1;
+    return {
+      hp: Math.round(baseStats90.hp * mult),
+      atk: Math.round(baseStats90.atk * mult),
+      def: Math.round(baseStats90.def * mult),
+      energyRegen: baseStats90.energyRegen,
+    };
+  }, [baseStats90, previewLevel]);
+
+  // Целевые показатели статов (Target Stats)
+  const targetStatsList: Array<{ name: string; value: string; note?: string }> =
+    useMemo(() => {
+      if (Array.isArray(charAny.targetStats) && charAny.targetStats.length > 0) {
+        return charAny.targetStats.map((t: any) => ({
+          name: t.name || t.stat || 'Стат',
+          value: t.value || '—',
+          note: t.note || '',
+        }));
+      }
+      return [
+        { name: 'Crit Rate', value: '70–80%', note: 'Приоритет' },
+        { name: 'Crit DMG', value: '260–285%', note: 'С учётом базовых 150%' },
+        { name: 'ATK', value: '2100–2450+', note: 'На 90 уровне' },
+        { name: 'Energy Regen', value: '120–130%', note: 'Комфортный ультимейт' },
+      ];
+    }, [charAny.targetStats]);
+
+  // Наборы Эхо
+  const echoSetsList: any[] = Array.isArray(charAny.echoSets)
+    ? charAny.echoSets
+    : [];
+
+  // Оружие с редактируемым % пользы
+  const weaponsList: any[] = Array.isArray(charAny.weapons)
+    ? charAny.weapons
+    : [];
+
+  // Навыки и цепи S1–S6
+  const skillsList: any[] = Array.isArray(charAny.skills) ? charAny.skills : [];
+  const constellationsList: any[] = Array.isArray(charAny.constellations)
+    ? charAny.constellations
+    : [];
+  const skillPriorityList: any[] = Array.isArray(charAny.skillPriority)
+    ? charAny.skillPriority
+    : [];
+
+  // Команды, отсортированные по приоритету (Задача 7 и 8)
+  const sortedTeams: any[] = useMemo(() => {
+    const raw: any[] = Array.isArray(charAny.teams) ? [...charAny.teams] : [];
+    return raw
+      .map((t, idx) => ({
+        ...t,
+        priority: typeof t.priority === 'number' ? t.priority : idx + 1,
+      }))
+      .sort((a, b) => a.priority - b.priority);
+  }, [charAny.teams]);
+
+  // Материалы
+  const materialsList: any[] = Array.isArray(charAny.materials)
+    ? charAny.materials
+    : [];
+
+  const loreText =
+    typeof charAny.lore === 'string' && charAny.lore.trim().length > 0
+      ? charAny.lore.trim()
+      : '';
+
   return (
-    <div className="space-y-7">
-      {/* Выход персонажа */}
-      <div>
-        <SectionTitle>Досье резонатора</SectionTitle>
-        <div className="flex flex-wrap gap-2.5">
-          {char.release ? (
-            <>
-              <span className="px-3.5 py-1.5 rounded-xl bg-accent/15 border border-accent/35 text-accent-light text-xs font-bold">
-                Релиз: Патч {char.release.patch}
-              </span>
-              {char.release.date && (
-                <span className="px-3.5 py-1.5 rounded-xl bg-glass border border-glass-border text-xs text-gray-300">
-                  {char.release.date}
-                </span>
-              )}
-            </>
-          ) : (
-            <span className="px-3.5 py-1.5 rounded-xl bg-glass border border-glass-border text-xs text-gray-400">
-              Архив Соларис-3 · Резонатор {char.rarity}★ ({char.role})
-            </span>
-          )}
-        </div>
+    <div className="space-y-6">
+      {/* Переключатель разделов гайда */}
+      <div className="glass-panel p-2 flex flex-wrap gap-2">
+        {(
+          [
+            { id: 'build', label: 'Билд: Эхо, Оружие и Статы', icon: Layers },
+            { id: 'teams', label: `Команды и Синергия (${sortedTeams.length})`, icon: Users },
+            { id: 'skills', label: 'Навыки и Цепи S1–S6', icon: Sparkles },
+            { id: 'materials', label: 'Вознесение и Лор', icon: Gem },
+          ] as const
+        ).map((tab) => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+                active
+                  ? 'bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] shadow-lg'
+                  : 'bg-white/[0.04] hover:bg-white/[0.09] text-gray-300 hover:text-white'
+              }`}
+            >
+              <Icon size={16} />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Навыки */}
-      <div>
-        <SectionTitle>Боевые модули и навыки</SectionTitle>
-        {char.skills && char.skills.length > 0 ? (
-          <div className="grid sm:grid-cols-2 gap-3">
-            {char.skills.map((s, i) => (
-              <div key={i} className="p-4 rounded-xl bg-bg/60 border border-glass-border hover:border-accent/35 transition-colors">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <h4 className="font-bold text-ivory text-sm">{s.name}</h4>
-                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-accent/15 border border-accent/30 text-accent-light uppercase tracking-wider font-bold shrink-0">
-                    {s.type}
+      {/* =====================================================================
+          ВКЛАДКА 1: БИЛД (СТАТЫ С ПОЛЗУНКОМ УРОВНЕЙ, НАБОРЫ ЭХО, ОРУЖИЕ)
+         ===================================================================== */}
+      {activeTab === 'build' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* БЛОК 1: БАЗОВЫЕ И ЦЕЛЕВЫЕ ПОКАЗАТЕЛИ СТАТОВ + ПОЛЗУНОК УРОВНЯ 10–90 */}
+          <div className="glass-panel p-6 space-y-5 solaris-crest">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
+              <div>
+                <h2 className="text-xl font-black text-white flex items-center gap-2">
+                  <Sliders size={20} className="text-accent-light" />
+                  <span>Характеристики и Целевые показатели (Ур. {previewLevel})</span>
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Передвигай ползунок с шагом 10 уровней, чтобы посмотреть рост характеристик резонатора
+                </p>
+              </div>
+
+              {/* Ползунок уровней 10 - 90 (шаг 10) */}
+              <div className="w-full md:w-80 p-3.5 rounded-2xl bg-[#090b12]/90 border border-white/10 space-y-2">
+                <div className="flex items-center justify-between text-xs font-extrabold">
+                  <span className="text-gray-400">Уровень персонажа:</span>
+                  <span className="px-2.5 py-0.5 rounded-lg bg-accent/25 text-accent-light font-mono">
+                    Lv. {previewLevel} / 90
                   </span>
                 </div>
-                <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">{s.description}</p>
+                <input
+                  type="range"
+                  min={10}
+                  max={90}
+                  step={10}
+                  value={previewLevel}
+                  onChange={(e) => setPreviewLevel(Number(e.target.value))}
+                  className="w-full accent-[#caa07d] cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] font-mono text-gray-500 px-0.5">
+                  {[10, 20, 30, 40, 50, 60, 70, 80, 90].map((lvl) => (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={() => setPreviewLevel(lvl)}
+                      className={`hover:text-white cursor-pointer ${
+                        previewLevel === lvl ? 'text-accent-light font-black' : ''
+                      }`}
+                    >
+                      {lvl}
+                    </button>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div className={`p-4 rounded-xl border ${theme.skillCard}`}>
-              <p className="text-[10px] uppercase tracking-widest text-white/70 mb-1">Resonance Skill</p>
-              <p className="font-bold text-white text-base">{theme.skills.resonance}</p>
-              <p className="text-xs text-white/75 mt-1.5">
-                Активирует резонансный импульс стихии {char.element} и накапливает шкалу Forte.
-              </p>
             </div>
-            <div className={`p-4 rounded-xl border ${theme.skillCard}`}>
-              <p className="text-[10px] uppercase tracking-widest text-white/70 mb-1">Resonance Liberation</p>
-              <p className="font-bold text-white text-base">{theme.skills.liberation}</p>
-              <p className="text-xs text-white/75 mt-1.5">
-                Высвобождает пиковую мощь резонатора в окно командных баффов.
-              </p>
+
+            {/* 4 плитки базовых статов на выбранном уровне */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+              <div className="p-4 rounded-2xl bg-[#090a10]/85 border border-white/[0.08]">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">
+                  Базовое HP (Lv.{previewLevel})
+                </span>
+                <strong className="text-2xl font-black text-emerald-300 tabular-nums mt-1 block">
+                  {scaledStats.hp.toLocaleString('ru-RU')}
+                </strong>
+              </div>
+              <div className="p-4 rounded-2xl bg-[#090a10]/85 border border-white/[0.08]">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">
+                  Базовая Атака (Lv.{previewLevel})
+                </span>
+                <strong className="text-2xl font-black text-amber-300 tabular-nums mt-1 block">
+                  {scaledStats.atk.toLocaleString('ru-RU')}
+                </strong>
+              </div>
+              <div className="p-4 rounded-2xl bg-[#090a10]/85 border border-white/[0.08]">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">
+                  Базовая Защита (Lv.{previewLevel})
+                </span>
+                <strong className="text-2xl font-black text-sky-300 tabular-nums mt-1 block">
+                  {scaledStats.def.toLocaleString('ru-RU')}
+                </strong>
+              </div>
+              <div className="p-4 rounded-2xl bg-[#090a10]/85 border border-white/[0.08]">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">
+                  Восст. энергии (ER)
+                </span>
+                <strong className="text-2xl font-black text-purple-300 tabular-nums mt-1 block">
+                  {scaledStats.energyRegen}%
+                </strong>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* Ротация в виде таймлайна */}
-      {char.rotation.length > 0 && (
-        <div>
-          <SectionTitle>Оптимальный боевой цикл</SectionTitle>
-          <div className="relative pl-4 border-l-2 border-accent/30 space-y-3">
-            {char.rotation.map((step) => (
-              <div
-                key={step.step}
-                className="relative flex items-start gap-3.5 p-3.5 rounded-xl bg-bg/60 border border-glass-border hover:border-accent/35 transition-colors"
-              >
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-accent-light to-accent text-bg flex items-center justify-center font-extrabold text-xs shrink-0 shadow-glow-sm">
-                  {step.step}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-center gap-2">
-                    <span className="font-bold text-ivory text-sm">{step.skill}</span>
-                    <span className="inline-flex items-center gap-1 text-xs text-accent-light font-mono shrink-0 px-2 py-0.5 rounded bg-accent/10 border border-accent/25">
-                      <Clock size={11} /> {step.timing}
-                    </span>
-                  </div>
-                  {step.note && <p className="text-xs text-gray-400 mt-1">{step.note}</p>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Созвездия */}
-      <div>
-        <SectionTitle>Резонансные цепи (Sequences)</SectionTitle>
-        {char.constellations && char.constellations.length > 0 ? (
-          <div className="grid sm:grid-cols-2 gap-2.5">
-            {char.constellations.map((c, i) => (
-              <div key={i} className="flex gap-3 p-3.5 rounded-xl bg-bg/60 border border-glass-border">
-                <span className="w-8 h-8 rounded-lg bg-accent/20 border border-accent/35 flex items-center justify-center text-accent-light font-extrabold text-xs shrink-0">
-                  S{i + 1}
-                </span>
-                <div className="min-w-0">
-                  <p className="font-bold text-ivory text-sm">{c.name}</p>
-                  <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{c.effect}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="p-4 rounded-xl bg-bg/50 border border-glass-border flex items-center gap-3 text-sm text-gray-400">
-            <Sparkles size={16} className="text-accent-light shrink-0" />
-            <span>Резонансные цепи S1–S6 можно добавить в один клик через панель «Админка».</span>
-          </div>
-        )}
-      </div>
-
-      {/* Лор */}
-      {lore && (
-        <div>
-          <SectionTitle>Архивный лор и связи</SectionTitle>
-          <p className="text-sm text-gray-300 leading-relaxed mb-4">{lore.story}</p>
-          <div className="space-y-2.5 mb-4">
-            {lore.quotes.map((q: string, i: number) => (
-              <blockquote
-                key={i}
-                className="p-4 rounded-xl bg-bg/60 border border-glass-border border-l-4 border-l-accent text-sm text-ivory/90 italic"
-              >
-                «{q}»
-              </blockquote>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {lore.ties.map((t: { label: string; targetId?: string }, i: number) =>
-              t.targetId ? (
-                <Link
-                  key={i}
-                  to={`/characters/${t.targetId}`}
-                  className="px-3.5 py-2 rounded-xl bg-glass border border-glass-border hover:border-accent/45 text-xs font-semibold text-ivory transition-colors focus-ring"
-                >
-                  {t.label} →
-                </Link>
-              ) : (
-                <span
-                  key={i}
-                  className="px-3.5 py-2 rounded-xl bg-glass border border-glass-border text-xs text-gray-300"
-                >
-                  {t.label}
-                </span>
-              ),
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-/* ========== ВКЛАДКА: МЕТА ========== */
-export const MetaTab = ({ char }: { char: Character }) => (
-  <div className="space-y-6">
-    <SectionTitle>Позиция в актуальной мете</SectionTitle>
-    <div className="grid sm:grid-cols-2 gap-4">
-      <div className="p-5 rounded-2xl bg-bg/60 border border-glass-border flex items-center justify-between">
-        <div>
-          <p className="text-[11px] text-gray-400 uppercase tracking-widest font-bold">
-            Tower of Adversity
-          </p>
-          <p className="text-xs text-gray-500 mt-1">Боссы и соло-цели на время</p>
-        </div>
-        <span
-          className={`w-16 h-16 rounded-2xl border flex items-center justify-center text-3xl font-extrabold ${
-            TIER_STYLES[char.metaRating.tower]
-          }`}
-        >
-          {char.metaRating.tower}
-        </span>
-      </div>
-      <div className="p-5 rounded-2xl bg-bg/60 border border-glass-border flex items-center justify-between">
-        <div>
-          <p className="text-[11px] text-gray-400 uppercase tracking-widest font-bold">
-            Whimpering Wastes
-          </p>
-          <p className="text-xs text-gray-500 mt-1">Многоволновая зачистка арен</p>
-        </div>
-        <span
-          className={`w-16 h-16 rounded-2xl border flex items-center justify-center text-3xl font-extrabold ${
-            TIER_STYLES[char.metaRating.realm]
-          }`}
-        >
-          {char.metaRating.realm}
-        </span>
-      </div>
-    </div>
-
-    <div className="grid md:grid-cols-2 gap-4">
-      <div className="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25">
-        <h4 className="text-emerald-300 font-bold mb-3 flex items-center gap-2 text-sm uppercase tracking-wider">
-          <CheckCircle2 size={16} /> Сильные стороны
-        </h4>
-        {char.strengths.length > 0 ? (
-          <ul className="space-y-2.5">
-            {char.strengths.map((s: string, i: number) => (
-              <li key={i} className="flex gap-2.5 text-sm text-gray-200">
-                <span className="text-emerald-400 font-bold">+</span>
-                <span>{s}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-xs text-gray-400">Данные преимуществ уточняются.</p>
-        )}
-      </div>
-
-      <div className="p-5 rounded-2xl bg-rose-500/10 border border-rose-500/25">
-        <h4 className="text-rose-300 font-bold mb-3 flex items-center gap-2 text-sm uppercase tracking-wider">
-          <ShieldAlert size={16} /> Слабые стороны
-        </h4>
-        {char.weaknesses.length > 0 ? (
-          <ul className="space-y-2.5">
-            {char.weaknesses.map((w: string, i: number) => (
-              <li key={i} className="flex gap-2.5 text-sm text-gray-200">
-                <span className="text-rose-400 font-bold">−</span>
-                <span>{w}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-xs text-gray-400">Критических уязвимостей не отмечено.</p>
-        )}
-      </div>
-    </div>
-  </div>
-);
-
-/* ========== ВКЛАДКА: БИЛД ========== */
-export const BuildTab = ({ char }: { char: Character }) => {
-  const stats = char.targetStats ?? ROLE_TARGET_STATS[char.role] ?? ROLE_TARGET_STATS['Main DPS'];
-  return (
-    <div className="space-y-7">
-      {/* Оружие */}
-      <div>
-        <SectionTitle>Рекомендуемое оружие</SectionTitle>
-        {char.weapons.length > 0 ? (
-          <div className="space-y-3">
-            {char.weapons.map((w, i) => (
-              <div
-                key={i}
-                className={`p-4 rounded-xl border ${
-                  w.type === 'Signature'
-                    ? 'bg-gradient-to-r from-accent/15 via-accent/5 to-transparent border-accent/40'
-                    : 'bg-bg/60 border-glass-border'
-                }`}
-              >
-                <div className="flex justify-between items-center mb-2 gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-6 h-6 rounded-md bg-glass border border-glass-border flex items-center justify-center text-xs font-mono text-gray-400 shrink-0">
-                      #{i + 1}
-                    </span>
-                    <h4 className="font-bold text-ivory truncate">{w.name}</h4>
-                    {w.type === 'Signature' && (
-                      <span className="px-2 py-0.5 rounded bg-accent/25 border border-accent/40 text-[10px] font-extrabold uppercase tracking-wider text-accent-light shrink-0">
-                        Сигнатура · BiS
+            {/* Целевые показатели статов на 90 ур. (финальная сборка с Эхо и оружием) */}
+            <div className="pt-2 space-y-3">
+              <h3 className="text-xs font-black uppercase tracking-wider text-accent-light">
+                Целевые показатели статов в готовом билде (Lv. 90 с Эхо)
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {targetStatsList.map((st, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col justify-between"
+                  >
+                    <span className="text-xs font-bold text-gray-400">{st.name}</span>
+                    <span className="text-lg font-black text-white mt-1">{st.value}</span>
+                    {st.note && (
+                      <span className="text-[11px] text-accent-light/90 mt-1">
+                        {st.note}
                       </span>
                     )}
                   </div>
-                  <span className="text-sm font-mono font-bold text-accent-light shrink-0">
-                    {w.rating}%
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-bg-secondary overflow-hidden mb-2 border border-white/5">
-                  <div
-                    className="h-full bg-gradient-to-r from-accent to-accent-light rounded-full"
-                    style={{ width: `${w.rating}%` }}
-                  />
-                </div>
-                <p className="text-xs text-gray-400">Источник: {w.source}</p>
+                ))}
               </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-400">Список оружия для этого резонатора пополняется.</p>
-        )}
-      </div>
-
-      {/* Эхо-сеты */}
-      <div>
-        <SectionTitle>Лучшие наборы Эхо</SectionTitle>
-        {char.echoSets.length > 0 ? (
-          <div className="space-y-4">
-            {char.echoSets.map((set, idx) => (
-              <div key={idx} className="p-4 sm:p-5 rounded-2xl bg-bg/60 border border-glass-border">
-                <div className="flex justify-between items-start mb-4 gap-2">
-                  <div>
-                    <h4 className="font-bold text-accent-light text-base">{set.name}</h4>
-                    <p className="text-xs text-gray-400 mt-0.5">Главный слот (Cost 4): {set.cost4}</p>
-                  </div>
-                  <span className="text-xs font-bold bg-accent/20 border border-accent/35 text-accent-light px-2.5 py-1 rounded-lg shrink-0">
-                    Приоритет #{set.priority}
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-                  <div className="p-3 rounded-xl bg-glass border border-glass-border">
-                    <span className="text-gray-500 block text-[10px] uppercase tracking-wider mb-1">
-                      Главное эхо (4 Cost)
-                    </span>
-                    <span className="text-ivory font-semibold text-xs sm:text-sm">{set.cost4}</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-glass border border-glass-border">
-                    <span className="text-gray-500 block text-[10px] uppercase tracking-wider mb-1">
-                      Схема Cost
-                    </span>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      {set.distribution.split('-').map((c, i) => (
-                        <span
-                          key={i}
-                          className="w-6 h-6 rounded-md bg-accent/15 border border-accent/35 flex items-center justify-center font-mono text-xs font-bold text-accent-light"
-                        >
-                          {c}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-xl bg-glass border border-glass-border">
-                    <span className="text-gray-500 block text-[10px] uppercase tracking-wider mb-1">
-                      Main статы (4 / 3 / 1)
-                    </span>
-                    <span className="text-ivory font-medium text-xs">
-                      {set.mainStats.join(' · ')}
-                    </span>
-                  </div>
-                </div>
-                <div className="mt-3 pt-3 border-t border-glass-border flex flex-wrap items-center gap-1.5">
-                  <span className="text-gray-500 text-xs mr-1">Приоритет саб-статов:</span>
-                  {set.subStats.map((s: string, i: number) => (
-                    <span
-                      key={i}
-                      className="px-2.5 py-0.5 rounded-md bg-glass border border-glass-border text-xs text-ivory"
-                    >
-                      {i + 1}. {s}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-400">Эхо-сеты для этого резонатора скоро будут добавлены.</p>
-        )}
-      </div>
-
-      {/* Целевые статы */}
-      <div>
-        <SectionTitle>Целевые показатели статов (Lv. 90)</SectionTitle>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {stats.map((s, i) => (
-            <div
-              key={i}
-              className="p-3.5 rounded-xl bg-bg/60 border border-glass-border text-center hover:border-accent/35 transition-colors"
-            >
-              <p className="text-lg sm:text-xl font-extrabold text-accent-light tabular-nums">
-                {s.value}
-              </p>
-              <p className="text-[11px] text-gray-400 mt-1">{s.label}</p>
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
 
-      {char.weapons.length > 0 && char.echoSets.length > 0 && <BuildSharer character={char} />}
-    </div>
-  );
-};
-
-/* ========== ВКЛАДКА: КОМАНДЫ ========== */
-export const TeamsTab = ({ char }: { char: Character }) => {
-  const teams = TEAM_ROTATIONS.filter((t) => t.members.includes(char.id));
-  return (
-    <div className="space-y-4">
-      <SectionTitle>Синергия и командные ротации</SectionTitle>
-      {teams.length === 0 && (
-        <p className="text-gray-400 text-sm">
-          Персональные командные пресеты для этого резонатора скоро появятся.
-        </p>
-      )}
-      {teams.map((team) => (
-        <div key={team.id} className="p-4 sm:p-5 rounded-2xl bg-bg/60 border border-glass-border space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* БЛОК 2: ЛУЧШИЕ НАБОРЫ ЭХО (Схема Cost, Мейн-статы, Приоритет саб-статов) */}
+          <div className="glass-panel p-6 space-y-5">
             <div>
-              <h4 className="font-bold text-ivory text-base">{team.name}</h4>
-              <span className="text-xs text-accent-light font-medium">{team.role}</span>
+              <h2 className="text-xl font-black text-white flex items-center gap-2">
+                <Layers size={20} className="text-accent-light" />
+                <span>Лучшие наборы Эхо и Характеристики слотов</span>
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Оптимальные сонатные сеты, схема Cost, главные статы и приоритет саб-статов
+              </p>
             </div>
-            <Link to={`/trainer/${team.id}`} className="btn-luxury focus-ring">
-              <Hammer size={15} /> Тренировать ротацию
-            </Link>
-          </div>
-          <div className="flex gap-3">
-            {team.members.map((mid) => {
-              const m = getCharacterById(mid);
-              if (!m) return null;
-              return (
-                <Link
-                  key={mid}
-                  to={`/characters/${mid}`}
-                  className="flex flex-col items-center gap-1.5 group focus-ring rounded-xl"
-                  aria-label={m.name}
-                >
-                  <ImagePlaceholder
-                    id={m.id}
-                    initials={m.name.slice(0, 2)}
-                    element={m.element}
-                    className="w-14 h-16 rounded-xl border border-glass-border group-hover:border-accent/50 transition-colors object-top"
-                  />
-                  <span className="text-xs font-medium text-gray-300 group-hover:text-ivory">
-                    {m.name}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-          <p className="text-sm text-gray-300 leading-relaxed">{team.synergy}</p>
-          <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
-            {team.steps.map((s, i) => (
-              <span
-                key={i}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-glass border border-glass-border text-[11px] shrink-0 text-gray-300"
-              >
-                <span className="font-mono text-accent-light">{s.t.toFixed(1)}с</span>
-                <span className="text-ivory font-bold">{getCharacterById(s.char)?.name}</span>
-                <span className="hidden sm:inline text-gray-400">{s.skill}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
 
-/* ========== ВКЛАДКА: ПРОКАЧКА ========== */
-const MATERIAL_LABELS: Record<string, string> = {
-  Ascension: 'Материалы возвышения',
-  Forte: 'Материалы Форте',
-  Skill: 'Материалы навыков',
-};
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {echoSetsList.map((es: any, idx: number) => {
+                const costLayout = es.costLayout || charAny.echoCostLayout || '4-3-3-1-1';
+                const cost4Main = es.cost4Main || 'Crit Rate / Crit DMG';
+                const cost3Main = es.cost3Main || `${character.element} DMG% / ATK%`;
+                const cost1Main = es.cost1Main || 'ATK%';
+                const substatPrio =
+                  es.substatsPriority ||
+                  (Array.isArray(es.substats) && es.substats.length > 0
+                    ? es.substats.join(' > ')
+                    : 'Crit Rate = Crit DMG > ATK% > Energy Regen');
 
-export const ProgressTab = ({ char }: { char: Character }) => {
-  const priority =
-    char.skillPriority ?? ROLE_SKILL_PRIORITY[char.role] ?? ROLE_SKILL_PRIORITY['Main DPS'];
-  return (
-    <div className="space-y-7">
-      <div>
-        <SectionTitle>Приоритет прокачки Forte</SectionTitle>
-        <div className="grid sm:grid-cols-2 gap-2.5">
-          {priority.map((p, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 p-3.5 rounded-xl bg-bg/60 border border-glass-border"
-            >
-              <span className="w-8 h-8 rounded-lg bg-accent/20 border border-accent/35 flex items-center justify-center text-accent-light font-extrabold text-sm shrink-0">
-                #{i + 1}
-              </span>
-              <div className="min-w-0">
-                <p className="font-bold text-ivory text-sm truncate">{p.name}</p>
-                {p.note && <p className="text-xs text-gray-400 truncate">{p.note}</p>}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <SectionTitle>Ресурсы возвышения</SectionTitle>
-          <Link to="/map" className="btn-luxury focus-ring shrink-0">
-            <MapPin size={15} /> Интерактивная карта
-          </Link>
-        </div>
-        {char.materials.length > 0 ? (
-          <div className="space-y-5">
-            {char.materials.map((cat, i) => (
-              <div key={i}>
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2.5">
-                  {MATERIAL_LABELS[cat.type] || cat.type}
-                </h4>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  {cat.items.map((item, j) => (
-                    <div
-                      key={j}
-                      className="flex items-center gap-3 p-3.5 rounded-xl bg-bg/60 border border-glass-border hover:border-accent/35 transition-colors"
-                    >
-                      <div className="w-11 h-11 rounded-xl bg-accent/15 border border-accent/35 flex items-center justify-center text-accent-light font-mono font-extrabold text-sm shrink-0">
-                        ×{item.quantity}
+                return (
+                  <div
+                    key={idx}
+                    className="p-5 rounded-2xl bg-[#090a10]/90 border border-white/10 space-y-4 flex flex-col justify-between"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 rounded-lg bg-accent/20 text-accent-light text-xs font-black">
+                            #{idx + 1}
+                          </span>
+                          <h3 className="text-base font-black text-white">{es.name}</h3>
+                        </div>
+                        <span className="px-3 py-1 rounded-xl bg-amber-500/15 border border-amber-400/40 text-amber-300 text-xs font-extrabold">
+                          Схема Cost: {costLayout}
+                        </span>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold text-ivory truncate">{item.name}</p>
-                        <p className="text-xs text-gray-400 truncate flex items-center gap-1 mt-0.5">
-                          <MapPin size={11} className="text-accent-light shrink-0" /> {item.location}
+
+                      {es.cost4 && (
+                        <div className="text-xs text-gray-300">
+                          <span className="text-gray-500 font-bold">Главное Эхо (Cost 4): </span>
+                          <span className="font-extrabold text-accent-light">{es.cost4}</span>
+                        </div>
+                      )}
+
+                      {(es.description || es.effect) && (
+                        <p className="text-xs text-gray-300 leading-relaxed bg-white/[0.03] p-3 rounded-xl border border-white/[0.06]">
+                          {es.description || es.effect}
                         </p>
-                      </div>
-                      <Link
-                        to="/map"
-                        title="Отследить на карте"
-                        aria-label={`Отследить ${item.name} на карте`}
-                        className="px-2.5 py-1.5 rounded-lg bg-glass border border-glass-border text-xs font-semibold text-gray-300 hover:text-accent-light hover:border-accent/40 transition-colors focus-ring shrink-0 flex items-center gap-1"
-                      >
-                        <MapPin size={12} /> Фарм
-                      </Link>
+                      )}
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+
+                    {/* Мейн-статы по Cost 4 / Cost 3 / Cost 1 */}
+                    <div className="space-y-2.5 pt-2 border-t border-white/[0.07]">
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="p-2.5 rounded-xl bg-black/50 border border-white/[0.07]">
+                          <span className="text-[10px] font-bold uppercase text-amber-300 block">
+                            Cost 4 (Мейн)
+                          </span>
+                          <span className="font-extrabold text-white mt-0.5 block">
+                            {cost4Main}
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-black/50 border border-white/[0.07]">
+                          <span className="text-[10px] font-bold uppercase text-purple-300 block">
+                            Cost 3 (Мейн)
+                          </span>
+                          <span className="font-extrabold text-white mt-0.5 block">
+                            {cost3Main}
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-black/50 border border-white/[0.07]">
+                          <span className="text-[10px] font-bold uppercase text-cyan-300 block">
+                            Cost 1 (Мейн)
+                          </span>
+                          <span className="font-extrabold text-white mt-0.5 block">
+                            {cost1Main}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Приоритет саб-статов */}
+                      <div className="p-3 rounded-xl bg-black/50 border border-white/[0.07]">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400 block">
+                          Приоритет саб-статов:
+                        </span>
+                        <span className="text-xs font-extrabold text-accent-light mt-1 block">
+                          {substatPrio}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        ) : (
-          <p className="text-sm text-gray-400">
-            Точный список материалов для этого резонатора можно заполнить через «Админку».
-          </p>
-        )}
-      </div>
+
+          {/* БЛОК 3: РЕКОМЕНДУЕМОЕ ОРУЖИЕ С РЕДАКТИРУЕМЫМ % ПОЛЬЗЫ (Задача 5) */}
+          <div className="glass-panel p-6 space-y-4">
+            <div>
+              <h2 className="text-xl font-black text-white flex items-center gap-2">
+                <Swords size={20} className="text-accent-light" />
+                <span>Рейтинг оружия и % эффективности</span>
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Сравнение урона сигнатурного и альтернативного оружия относительно топ-1 сборки
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {weaponsList.map((w: any, idx: number) => {
+                const percent =
+                  typeof w.percent === 'number' && !Number.isNaN(w.percent)
+                    ? w.percent
+                    : idx === 0
+                    ? 100
+                    : Math.max(70, 100 - idx * 8);
+
+                return (
+                  <div
+                    key={idx}
+                    className="p-4 rounded-2xl bg-[#090a10]/90 border border-white/10 space-y-2.5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className={`px-2.5 py-1 rounded-lg text-xs font-black ${
+                            idx === 0 || w.isBest
+                              ? 'bg-amber-400 text-[#09090b]'
+                              : 'bg-white/10 text-gray-300'
+                          }`}
+                        >
+                          #{w.rank ?? idx + 1}
+                        </span>
+                        <div>
+                          <h3 className="text-sm sm:text-base font-black text-white">
+                            {w.name}
+                          </h3>
+                          {w.stat && (
+                            <span className="text-xs text-accent-light font-semibold">
+                              {w.stat}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {w.note && (
+                          <span className="px-2.5 py-1 rounded-lg bg-white/[0.06] text-[11px] font-bold text-gray-300">
+                            {w.note}
+                          </span>
+                        )}
+                        <span className="px-3 py-1 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-black tabular-nums">
+                          {percent}% пользы
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Шкала % пользы */}
+                    <div className="w-full h-2 rounded-full bg-white/[0.06] overflow-hidden">
+                      <div
+                        style={{ width: `${Math.min(100, Math.max(15, percent))}%` }}
+                        className={`h-full rounded-full ${
+                          percent >= 98
+                            ? 'bg-gradient-to-r from-amber-400 to-yellow-200'
+                            : 'bg-gradient-to-r from-[#caa07d] to-amber-500/70'
+                        }`}
+                      />
+                    </div>
+
+                    {w.passive && (
+                      <p className="text-xs text-gray-400 leading-relaxed pt-1">
+                        {w.passive}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* БЛОК 4: СИЛЬНЫЕ И СЛАБЫЕ СТОРОНЫ */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="glass-panel p-5 space-y-3">
+              <h3 className="text-sm font-black uppercase tracking-wider text-emerald-300 flex items-center gap-2">
+                <CheckCircle2 size={16} />
+                <span>Сильные стороны</span>
+              </h3>
+              <ul className="space-y-2 text-xs sm:text-sm text-gray-200">
+                {(character.strengths ?? []).map((s, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-emerald-400 font-black mt-0.5">•</span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="glass-panel p-5 space-y-3">
+              <h3 className="text-sm font-black uppercase tracking-wider text-rose-300 flex items-center gap-2">
+                <AlertTriangle size={16} />
+                <span>Слабые стороны</span>
+              </h3>
+              <ul className="space-y-2 text-xs sm:text-sm text-gray-200">
+                {(character.weaknesses ?? []).map((w, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-rose-400 font-black mt-0.5">•</span>
+                    <span>{w}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          ВКЛАДКА 2: КОМАНДЫ С ПРИОРИТЕТОМ И МЕТКАМИ (Задачи 7 и 8)
+         ===================================================================== */}
+      {activeTab === 'teams' && (
+        <div className="space-y-4 animate-fade-in">
+          <div className="glass-panel p-6 space-y-4">
+            <div>
+              <h2 className="text-xl font-black text-white flex items-center gap-2">
+                <Users size={20} className="text-accent-light" />
+                <span>Лучшие команды и синергия отрядов</span>
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Отряды отсортированы по приоритету эффективности с боевыми метками синергии
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {sortedTeams.map((team: any, idx: number) => {
+                const priorityNum = team.priority ?? idx + 1;
+                const teamTags: string[] = Array.isArray(team.tags) ? team.tags : [];
+                const teamName =
+                  team.name || `Отряд #${priorityNum} (${character.name})`;
+                const members: string[] = Array.isArray(team.members)
+                  ? team.members
+                  : [];
+
+                return (
+                  <div
+                    key={idx}
+                    className="p-5 rounded-2xl bg-[#090a10]/90 border border-white/10 flex flex-col justify-between gap-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-lg text-xs font-black ${
+                              priorityNum === 1
+                                ? 'bg-amber-400 text-[#09090b]'
+                                : 'bg-accent/20 text-accent-light border border-accent/40'
+                            }`}
+                          >
+                            Приоритет #{priorityNum}
+                          </span>
+
+                          {teamTags.map((tag) => (
+                            <span
+                              key={tag}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase border ${
+                                PRYDWEN_TAG_COLORS[tag] ??
+                                'bg-white/10 text-gray-200 border-white/15'
+                              }`}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                        <h3 className="text-base sm:text-lg font-black text-white">
+                          {teamName}
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2.5">
+                      {members.map((memberId: string, mIdx: number) => {
+                        const memberChar = getCharacterById(memberId);
+                        const slotLabel =
+                          mIdx === 0
+                            ? 'Main DPS'
+                            : mIdx === 1
+                            ? 'Sub DPS / Amp'
+                            : 'Support / Heal';
+
+                        if (!memberChar) {
+                          return (
+                            <div
+                              key={mIdx}
+                              className="p-3 rounded-xl bg-black/50 border border-white/10 text-center"
+                            >
+                              <span className="text-xs font-bold text-gray-300 block">
+                                {memberId}
+                              </span>
+                              <span className="text-[10px] text-gray-500">{slotLabel}</span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <Link
+                            key={`${memberId}-${mIdx}`}
+                            to={`/characters/${memberChar.id}`}
+                            className="group p-2.5 rounded-2xl bg-black/55 hover:bg-[#141826] border border-white/[0.07] flex flex-col items-center text-center transition-all"
+                          >
+                            <ImagePlaceholder
+                              id={memberChar.id}
+                              initials={memberChar.name.slice(0, 2)}
+                              element={memberChar.element}
+                              variant="icon"
+                              className="w-16 h-16 aspect-square rounded-xl object-cover mb-1.5"
+                            />
+                            <span className="text-xs font-extrabold text-white group-hover:text-accent-light truncate w-full">
+                              {memberChar.name}
+                            </span>
+                            <span className="text-[10px] text-gray-400">{slotLabel}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+
+                    {(team.note || team.description) && (
+                      <p className="text-xs text-gray-300 leading-relaxed pt-2 border-t border-white/[0.06]">
+                        {team.note || team.description}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+
+              {sortedTeams.length === 0 && (
+                <p className="text-xs text-gray-400 col-span-full">
+                  Команды ещё не добавлены. Добавь их в Админке во вкладке «4. Команды и Ресурсы».
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          ВКЛАДКА 3: НАВЫКИ И РЕЗОНАНСНЫЕ ЦЕПИ S1–S6
+         ===================================================================== */}
+      {activeTab === 'skills' && (
+        <div className="space-y-6 animate-fade-in">
+          {skillPriorityList.length > 0 && (
+            <div className="glass-panel p-6 space-y-3">
+              <h2 className="text-lg font-black text-white">
+                Приоритет прокачки навыков Форте
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {skillPriorityList.map((sp: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className="p-3.5 rounded-2xl bg-[#090a10]/85 border border-white/10 flex items-center justify-between"
+                  >
+                    <div>
+                      <span className="text-xs font-extrabold text-white block">
+                        {sp.name || sp.skill}
+                      </span>
+                      {sp.level && (
+                        <span className="text-[11px] text-gray-400">
+                          Рекомендуемый ур.: {sp.level}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-amber-300 text-xs font-black">
+                      {'★'.repeat(Number(sp.priority) || 5)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="glass-panel p-6 space-y-4">
+            <h2 className="text-xl font-black text-white flex items-center gap-2">
+              <Sparkles size={20} className="text-accent-light" />
+              <span>Активные навыки и Контур Форте</span>
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {skillsList.map((sk: any, idx: number) => (
+                <div
+                  key={idx}
+                  className="p-4 rounded-2xl bg-[#090a10]/90 border border-white/10 space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="px-2.5 py-0.5 rounded-lg bg-accent/20 text-accent-light text-[10px] font-black uppercase tracking-wider">
+                      {sk.type || 'Skill'}
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-white">{sk.name}</h3>
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                    {sk.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="glass-panel p-6 space-y-4">
+            <h2 className="text-xl font-black text-white flex items-center gap-2">
+              <Shield size={20} className="text-amber-300" />
+              <span>Резонансные цепи (Созвездия S1–S6)</span>
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {constellationsList.map((con: any, idx: number) => (
+                <div
+                  key={idx}
+                  className="p-4 rounded-2xl bg-[#090a10]/90 border border-white/10 flex items-start gap-3.5"
+                >
+                  <span className="px-3 py-1.5 rounded-xl bg-amber-400 text-[#09090b] text-xs font-black shrink-0">
+                    S{con.level ?? idx + 1}
+                  </span>
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-black text-white">{con.name}</h3>
+                    <p className="text-xs text-gray-300 leading-relaxed">
+                      {con.description}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          ВКЛАДКА 4: МАТЕРИАЛЫ ВОЗНЕСЕНИЯ И ПОЛНЫЙ ЛОР / БИОГРАФИЯ (Задача 2)
+         ===================================================================== */}
+      {activeTab === 'materials' && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="glass-panel p-6 space-y-4">
+            <h2 className="text-xl font-black text-white flex items-center gap-2">
+              <BookOpen size={20} className="text-accent-light" />
+              <span>Биография и Лор резонатора</span>
+            </h2>
+            <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-line bg-[#090a10]/85 p-5 rounded-2xl border border-white/10">
+              {loreText ||
+                `Архивная запись Соларис-3 о резонаторе ${character.name} (${character.title}). Ты можешь дополнить биографию в панели администратора.`}
+            </p>
+          </div>
+
+          {materialsList.length > 0 && (
+            <div className="glass-panel p-6 space-y-4">
+              <h2 className="text-xl font-black text-white flex items-center gap-2">
+                <Gem size={20} className="text-accent-light" />
+                <span>Ресурсы для полного вознесения (Lv. 90 и Форте 10)</span>
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {materialsList.map((m: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className="p-4 rounded-2xl bg-[#090a10]/90 border border-white/10 flex items-center justify-between gap-3"
+                  >
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-accent-light block">
+                        {m.type || 'Ресурс'}
+                      </span>
+                      <span className="text-sm font-extrabold text-white mt-0.5 block">
+                        {m.name}
+                      </span>
+                    </div>
+                    {m.count && (
+                      <span className="px-3 py-1 rounded-xl bg-white/[0.07] text-xs font-black text-amber-300">
+                        ×{m.count}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
-/* ========== ОБЁРТКА: ПЕРЕКЛЮЧАТЕЛЬ ВКЛАДОК ========== */
-type TabId = 'info' | 'meta' | 'build' | 'teams' | 'progress';
 
-const TAB_LIST: { id: TabId; label: string }[] = [
-  { id: 'info', label: 'Инфо' },
-  { id: 'meta', label: 'Мета' },
-  { id: 'build', label: 'Билд' },
-  { id: 'teams', label: 'Команды' },
-  { id: 'progress', label: 'Прокачка' },
-];
-
-export const CharacterTabs = ({ character }: { character: Character }) => {
-  const [active, setActive] = useState<TabId>('info');
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap gap-2 p-1.5 rounded-2xl bg-glass border border-glass-border">
-        {TAB_LIST.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setActive(t.id)}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors focus-ring ${
-              active === t.id
-                ? 'bg-accent/20 border border-accent/40 text-accent-light'
-                : 'border border-transparent text-gray-400 hover:text-ivory'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {active === 'info' && <InfoTab char={character} />}
-      {active === 'meta' && <MetaTab char={character} />}
-      {active === 'build' && <BuildTab char={character} />}
-      {active === 'teams' && <TeamsTab char={character} />}
-      {active === 'progress' && <ProgressTab char={character} />}
-    </div>
-  );
-};
+export default CharacterTabs;

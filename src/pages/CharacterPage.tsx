@@ -1,5 +1,7 @@
 // Страница детального обзора персонажа (/characters/:id):
-// Полноэкранный горизонтальный арт во весь баннер + информация и навыки в матовых стеклянных «облачках»
+// 1) Горизонтальный арт во весь баннер с учётом смещения X/Y и зума из Админки
+// 2) Отображение отредактированного в Админке Лора и биографии
+// 3) Отображение актуальных мета-рангов T0 / T0.5 / T1... и меток механик
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
@@ -20,7 +22,7 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { getCharacterResonanceChain } from '../utils/pullMatch';
 import { PRYDWEN_CHAR_META, PRYDWEN_TAG_COLORS } from '../data/prydwenMeta';
-import { initAdminRuntimeSync } from '../utils/adminStorage';
+import { initAdminRuntimeSync, syncAdminContentToRuntime } from '../utils/adminStorage';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
 const ELEMENT_CLOUD_ACCENT: Record<
@@ -66,6 +68,7 @@ export const CharacterPage = () => {
   const [hideUiOverlay, setHideUiOverlay] = useState(false);
 
   useEffect(() => {
+    syncAdminContentToRuntime();
     initAdminRuntimeSync().then(() => setSyncTick((t) => t + 1));
   }, [id]);
 
@@ -76,7 +79,7 @@ export const CharacterPage = () => {
       ? `${character.name} — Билд, Эхо и Гайд · Stellar Wiki`
       : 'Персонаж — Stellar Wiki',
     description: character
-      ? `Полный гайд и билд на ${character.name} (${character.element} / ${character.weapon}) в Wuthering Waves: лучшие наборы Эхо, оружие, навыки и команды.`
+      ? `Полный гайд и билд на ${character.name} (${character.element} / ${character.weapon}) в Wuthering Waves.`
       : 'Страница резонатора Wuthering Waves.',
   });
 
@@ -110,11 +113,16 @@ export const CharacterPage = () => {
   const forteItem =
     skillsList.find((s) => s.type === 'Forte') ?? skillsList[2];
 
-  const towerTier = prydwen?.toa ?? character.metaRating?.tower ?? 'S';
-  const wastesTier = prydwen?.wastes ?? character.metaRating?.realm ?? 'S';
+  const towerTier =
+    charAny.prydwenMeta?.toa ?? prydwen?.toa ?? character.metaRating?.tower ?? 'T0';
+  const wastesTier =
+    charAny.prydwenMeta?.wastes ?? prydwen?.wastes ?? character.metaRating?.realm ?? 'T0';
+  const activeTags: string[] =
+    charAny.prydwenMeta?.tags ?? prydwen?.tags ?? [];
 
+  // Отображаем отредактированный лор и биографию из админки (Задача 2)
   const customLore =
-    typeof charAny.lore === 'string' && charAny.lore.trim().length > 10
+    typeof charAny.lore === 'string' && charAny.lore.trim().length > 0
       ? charAny.lore.trim()
       : '';
   const descriptionText =
@@ -154,17 +162,16 @@ export const CharacterPage = () => {
 
       {/* ==================== ПАНОРАМНЫЙ БАННЕР С ГОРИЗОНТАЛЬНЫМ АРТОМ ВО ВСЁ ПОЛЕ ==================== */}
       <div className="relative rounded-[30px] overflow-hidden min-h-[440px] sm:min-h-[480px] bg-[#08090f] shadow-[0_30px_85px_rgba(0,0,0,0.9)] flex flex-col justify-end lg:justify-center p-5 sm:p-8 lg:p-10">
-        {/* 1. Горизонтальный арт (variant="splash") растянут на ВСЮ карточку */}
+        {/* 1. Горизонтальный арт (variant="splash") с позиционированием X/Y и масштабом */}
         <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
           <ImagePlaceholder
             id={character.id}
             initials={character.name.slice(0, 2)}
             element={character.element}
             variant="splash"
-            className="w-full h-full object-cover object-center transition-transform duration-700"
+            className="w-full h-full object-cover transition-transform duration-700"
           />
 
-          {/* Деликатный градиент справа под стеклянными облачками (левая часть с персонажем остаётся чистой) */}
           <div
             className={`absolute inset-0 bg-gradient-to-r from-transparent via-black/25 to-[#07080e]/70 transition-opacity duration-300 ${
               hideUiOverlay ? 'opacity-0' : 'opacity-100'
@@ -177,17 +184,11 @@ export const CharacterPage = () => {
           />
         </div>
 
-        {/* Кнопка просмотра чистого горизонтального арта без текста */}
         <div className="absolute top-4 right-4 z-30 flex items-center gap-2">
           <button
             type="button"
             onClick={() => setHideUiOverlay((v) => !v)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-[#090b12]/75 hover:bg-[#090b12]/95 backdrop-blur-xl border border-white/15 text-xs font-extrabold text-ivory shadow-lg transition-all cursor-pointer"
-            title={
-              hideUiOverlay
-                ? 'Показать информационные облачка'
-                : 'Скрыть интерфейс и посмотреть чистый арт'
-            }
           >
             {hideUiOverlay ? (
               <Eye size={14} className="text-accent-light" />
@@ -198,22 +199,20 @@ export const CharacterPage = () => {
           </button>
         </div>
 
-        {/* 2. Стеклянные «облачка» с информацией и навыками поверх правой части баннера */}
+        {/* 2. Стеклянные «облачка» с информацией и навыками */}
         <div
-          className={`relative z-20 grid grid-cols-1 lg:grid-cols-[1fr,470px,330px] gap-5 items-center transition-all duration-300 ${
+          className={`relative z-20 grid grid-cols-1 lg:grid-cols-[1fr,480px,330px] gap-5 items-center transition-all duration-300 ${
             hideUiOverlay
               ? 'opacity-0 pointer-events-none translate-y-3'
               : 'opacity-100 translate-y-0'
           }`}
         >
-          {/* Пустая левая зона, чтобы не перекрывать персонажа на горизонтальном арте */}
           <div className="hidden lg:block" />
 
-          {/* ГЛАВНОЕ ОБЛАЧКО: Имя, редкость, описание и теги */}
+          {/* ГЛАВНОЕ ОБЛАЧКО: Имя, редкость, отредактированный лор и тиры T0–T3 */}
           <div
             className={`rounded-[28px] bg-[#090b12]/78 backdrop-blur-2xl border ${cloudStyle.border} ${cloudStyle.glow} p-6 sm:p-7 space-y-4`}
           >
-            {/* Верхние бейджи */}
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`px-3 py-1 rounded-xl text-xs font-black tracking-wider border ${
@@ -235,7 +234,7 @@ export const CharacterPage = () => {
                 </span>
               )}
 
-              {prydwen?.tags?.map((tag) => (
+              {activeTags.map((tag) => (
                 <span
                   key={tag}
                   className={`px-2.5 py-1 rounded-xl text-[11px] font-black uppercase tracking-wider border ${
@@ -248,7 +247,6 @@ export const CharacterPage = () => {
               ))}
             </div>
 
-            {/* Имя и титул */}
             <div>
               <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight leading-none drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]">
                 {character.name}
@@ -258,12 +256,11 @@ export const CharacterPage = () => {
               </p>
             </div>
 
-            {/* Описание в читаемом контейнере */}
-            <p className="text-xs sm:text-[13.5px] text-gray-100/95 leading-relaxed line-clamp-4">
+            {/* Отредактированный в админке Лор и биография */}
+            <p className="text-xs sm:text-[13.5px] text-gray-100/95 leading-relaxed whitespace-pre-line max-h-36 overflow-y-auto pr-1">
               {descriptionText}
             </p>
 
-            {/* Нижние пилюли: Стихия, Оружие, Тиры */}
             <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-white/10">
               <span
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-extrabold ${cloudStyle.badgeBg}`}
@@ -287,11 +284,11 @@ export const CharacterPage = () => {
                 <span>{WEAPON_LABELS[character.weapon]}</span>
               </span>
 
-              <span className="px-3 py-1.5 rounded-xl bg-white/[0.08] border border-white/15 text-xs font-extrabold text-amber-200">
-                Башня: {towerTier}
+              <span className="px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-400/35 text-xs font-black text-amber-200">
+                ToA: {towerTier}
               </span>
 
-              <span className="px-3 py-1.5 rounded-xl bg-white/[0.08] border border-white/15 text-xs font-extrabold text-cyan-200">
+              <span className="px-3 py-1.5 rounded-xl bg-cyan-500/15 border border-cyan-400/35 text-xs font-black text-cyan-200">
                 Wastes: {wastesTier}
               </span>
             </div>
@@ -372,7 +369,7 @@ export const CharacterPage = () => {
         </div>
       </div>
 
-      {/* Вкладки детального гайда, билда, ротаций и материалов */}
+      {/* Вкладки детального гайда, билда, команд и лора */}
       <CharacterTabs character={character} />
     </div>
   );

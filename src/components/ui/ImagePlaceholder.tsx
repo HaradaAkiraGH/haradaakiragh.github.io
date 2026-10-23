@@ -1,7 +1,5 @@
-// Умная отрисовка портретов персонажей с поддержкой 3 форматов:
-// - 'card'   (Скрин 1): Большая вертикальная карточка для каталога
-// - 'icon'   (Скрин 2): Маленькая квадратная иконка для Меты, круток и мини-слотов
-// - 'splash' (Скрин 3): Горизонтальный арт для внутренней страницы персонажа
+// Отрисовка портретов персонажей с поддержкой 3 форматов (card, icon, splash)
+// и точным позиционированием (X%, Y%, Scale%), настроенным в Админке
 import { useEffect, useState } from 'react';
 import { IMAGES } from '../../data/images';
 import { getCharacterArtUrls } from '../../utils/adminStorage';
@@ -15,7 +13,6 @@ const GRADIENTS: Record<string, string> = {
   Aero: 'from-green-600/50 to-green-950/60',
 };
 
-// Регулярка для автоопределения мини-слотов (Мета, Крутки, Поиск, Калькулятор, Отряды)
 const SMALL_ICON_CLASS_RE =
   /\b(w-7|w-8|w-9|w-10|w-11|w-12|w-14|w-16|w-20|aspect-square|aspect-\[3\/3\.8\])\b/;
 
@@ -38,7 +35,6 @@ export const ImagePlaceholder = ({
 
   const arts = getCharacterArtUrls(id);
 
-  // Определяем нужный формат картинки (явно переданный или по контексту)
   let resolvedVariant: 'card' | 'icon' | 'splash' = variant ?? 'card';
   if (!variant) {
     if (SMALL_ICON_CLASS_RE.test(className)) {
@@ -59,6 +55,8 @@ export const ImagePlaceholder = ({
       ? arts.splash || arts.card || IMAGES[id]
       : arts.card || IMAGES[id];
 
+  const pos = arts.transforms[resolvedVariant] ?? { x: 50, y: 15, scale: 100 };
+
   useEffect(() => {
     setFailed(false);
   }, [id, src]);
@@ -74,7 +72,12 @@ export const ImagePlaceholder = ({
           imageRendering: 'auto',
           WebkitBackfaceVisibility: 'hidden',
           backfaceVisibility: 'hidden',
-          transform: 'translateZ(0)',
+          objectPosition: `${pos.x}% ${pos.y}%`,
+          transformOrigin: `${pos.x}% ${pos.y}%`,
+          transform:
+            pos.scale && pos.scale !== 100
+              ? `scale(${pos.scale / 100}) translateZ(0)`
+              : 'translateZ(0)',
         }}
         className={`object-cover select-none ${className}`}
         draggable={false}
