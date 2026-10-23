@@ -1,7 +1,7 @@
 // Движок динамического контента Админки:
-// 1) Хранение 3 форматов изображений персонажа (card, icon, splash) + их координат смещения (X%, Y%, Scale%)
-// 2) Синхронизация тиров T0–T3 и тегов механик с глобальной таблицей PRYDWEN_CHAR_META
-// 3) Наложение всех правок (лор, оружие с %, эхо со схемой костов, статы, команды с приоритетом и метками)
+// 1) Хранение и синхронизация горизонтальных плиток Главной страницы (HomeTileItem[])
+// 2) Хранение 3 форматов изображений персонажа (card, icon, splash) + их координат смещения (X%, Y%, Scale%)
+// 3) Синхронизация тиров T0–T3 и тегов механик с глобальной таблицей PRYDWEN_CHAR_META
 import { CHARACTERS } from '../data/characters';
 import { IMAGES } from '../data/images';
 import { PRYDWEN_CHAR_META, PrydwenTier, PrydwenRoleCol } from '../data/prydwenMeta';
@@ -16,6 +16,10 @@ const CUSTOM_SPLASHES_KEY = 'ww_admin_custom_splashes_v1';
 const CUSTOM_ART_POS_KEY = 'ww_admin_custom_art_pos_v1';
 const CUSTOM_NEWS_KEY = 'ww_admin_news_v1';
 const CUSTOM_GUIDES_KEY = 'ww_admin_guides_v1';
+const HOME_TILES_KEY = 'ww_admin_home_tiles_v1';
+
+// Специальный ключ в таблице character_overrides для облачной синхронизации плиток Главной
+export const HOME_TILES_CLOUD_ID = '__home_tiles_config__';
 
 const ORIGINAL_CHARS_SNAPSHOT: Map<string, Character> = new Map(
   CHARACTERS.map((c) => [c.id, JSON.parse(JSON.stringify(c)) as Character]),
@@ -26,9 +30,9 @@ export const CHARACTER_ICONS: Record<string, string> = {};
 export const CHARACTER_SPLASHES: Record<string, string> = {};
 
 export interface ArtPosition {
-  x: number; // 0..100 (%)
-  y: number; // 0..100 (%)
-  scale: number; // 80..200 (%)
+  x: number;
+  y: number;
+  scale: number;
 }
 
 export interface CharacterArtTransforms {
@@ -51,6 +55,127 @@ export interface CharacterArtBundle {
   splash: string;
   transforms: CharacterArtTransforms;
 }
+
+/* ==================== ГОРИЗОНТАЛЬНЫЕ ПЛИТКИ ГЛАВНОЙ СТРАНИЦЫ ==================== */
+export interface HomeTileItem {
+  id: string;
+  title: string;
+  badge: string;
+  description: string;
+  path: string;
+  image: string;
+  imagePosX?: number;
+  imagePosY?: number;
+  imageScale?: number;
+}
+
+export const DEFAULT_HOME_TILES: HomeTileItem[] = [
+  {
+    id: 'tile-characters',
+    title: 'Каталог Резонаторов',
+    badge: 'БАЗА ГЕРОЕВ',
+    description:
+      'Все 61+ резонаторов Соларис-3 с подробными билдами, созвездиями S1–S6, оружием и материалами вознесения.',
+    path: '/characters',
+    image: '/images/Camellya_Card.webp',
+    imagePosX: 50,
+    imagePosY: 18,
+    imageScale: 105,
+  },
+  {
+    id: 'tile-bestiary',
+    title: 'Бестиарий и Материалы',
+    badge: 'АРХИВ 163+',
+    description:
+      'Полный каталог всех 163 материалов вознесения, боссов, диковинок, оружия и поглощённых частот Эхо.',
+    path: '/bestiary',
+    image:
+      'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=900&q=80',
+    imagePosX: 50,
+    imagePosY: 50,
+    imageScale: 105,
+  },
+  {
+    id: 'tile-meta',
+    title: 'Мета и Тир-лист',
+    badge: 'PRYDWEN T0–T3',
+    description:
+      'Актуальный рейтинг эффективности персонажей и топовых отрядов для Tower of Adversity и Whimpering Wastes.',
+    path: '/meta',
+    image:
+      'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=900&q=80',
+    imagePosX: 50,
+    imagePosY: 50,
+    imageScale: 105,
+  },
+  {
+    id: 'tile-pulls',
+    title: 'Трекер Круток (Convene)',
+    badge: 'АНАЛИТИКА ГАЧИ',
+    description:
+      'Импорт истории призывов из логов игры в 1 клик, подсчёт пити, 50/50 и автоматический учёт созвездий.',
+    path: '/pulls',
+    image:
+      'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=900&q=80',
+    imagePosX: 50,
+    imagePosY: 50,
+    imageScale: 105,
+  },
+  {
+    id: 'tile-map',
+    title: 'Интерактивная Карта',
+    badge: 'НАВИГАТОР МИРА',
+    description:
+      'Сундуки, Сонанс-каскеты, боссы, телепорты и маршруты фарма диковинок с отметкой собранного прогресса.',
+    path: '/map',
+    image:
+      'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=900&q=80',
+    imagePosX: 50,
+    imagePosY: 50,
+    imageScale: 105,
+  },
+  {
+    id: 'tile-calculator',
+    title: 'Калькулятор Эхо и Статов',
+    badge: 'ОПТИМИЗАТОР',
+    description:
+      'Расчёт итогового крит-баланса, ценности саб-статов Эхо и симуляция урона резонатора перед прокачкой.',
+    path: '/calculator',
+    image:
+      'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=900&q=80',
+    imagePosX: 50,
+    imagePosY: 50,
+    imageScale: 105,
+  },
+];
+
+export const getHomeTiles = (): HomeTileItem[] => {
+  try {
+    const raw = localStorage.getItem(HOME_TILES_KEY);
+    if (!raw) return DEFAULT_HOME_TILES;
+    const parsed = JSON.parse(raw) as HomeTileItem[];
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_HOME_TILES;
+  } catch {
+    return DEFAULT_HOME_TILES;
+  }
+};
+
+export const saveHomeTiles = (tiles: HomeTileItem[]): void => {
+  try {
+    localStorage.setItem(HOME_TILES_KEY, JSON.stringify(tiles));
+  } catch {
+    // игнорируем переполнение
+  }
+};
+
+export const resetHomeTiles = (): HomeTileItem[] => {
+  try {
+    localStorage.removeItem(HOME_TILES_KEY);
+  } catch {
+    // игнорируем
+  }
+  return DEFAULT_HOME_TILES;
+};
 
 export interface AdminNewsItem {
   id: string;
@@ -107,7 +232,6 @@ export const getCustomArtPosMap = (): Record<string, CharacterArtTransforms> => 
   }
 };
 
-/* ---------- Получение всех 3 картинок и их координат смещения ---------- */
 export const getCharacterArtUrls = (charId: string): CharacterArtBundle => {
   const cards = getCustomImagesMap();
   const icons = getCustomIconsMap();
@@ -133,7 +257,6 @@ export const getCharacterArtUrls = (charId: string): CharacterArtBundle => {
   };
 };
 
-/* ---------- Сохранение всех 3 форматов картинок и их смещения ---------- */
 export const saveCharacterArtBundle = (
   charId: string,
   bundle: {
@@ -199,7 +322,6 @@ export const saveCustomCharacterImage = (charId: string, imageUrl: string): void
   saveCharacterArtBundle(charId, { card: imageUrl });
 };
 
-/* ---------- Чтение / запись новых персонажей ---------- */
 export const getCustomCharacters = (): Character[] => {
   try {
     const raw = localStorage.getItem(CUSTOM_CHARS_KEY);
@@ -214,11 +336,10 @@ export const saveCustomCharacters = (list: Character[]): void => {
     localStorage.setItem(CUSTOM_CHARS_KEY, JSON.stringify(list));
     syncAdminContentToRuntime();
   } catch {
-    // игнорируем ошибки
+    // игнорируем
   }
 };
 
-/* ---------- Чтение / запись оверрайдов существующих героев ---------- */
 export const getLocalCharOverrides = (): Record<string, Partial<Character>> => {
   try {
     const raw = localStorage.getItem(CHAR_OVERRIDES_KEY);
@@ -267,7 +388,6 @@ export const removeLocalCharOverride = (charId: string): void => {
   }
 };
 
-/* ---------- Мгновенная синхронизация с CHARACTERS, IMAGES и PRYDWEN_CHAR_META ---------- */
 export const syncAdminContentToRuntime = (
   serverEdits?: Record<string, Record<string, unknown>>,
 ): void => {
@@ -278,13 +398,19 @@ export const syncAdminContentToRuntime = (
   const customChars = getCustomCharacters();
   const localOverrides = getLocalCharOverrides();
 
-  // 1. Восстанавливаем исходных персонажей
+  // Если с сервера пришли сохранённые плитки Главной — синхронизируем их
+  if (serverEdits && serverEdits[HOME_TILES_CLOUD_ID]) {
+    const cloudTiles = (serverEdits[HOME_TILES_CLOUD_ID] as any)?.tiles;
+    if (Array.isArray(cloudTiles) && cloudTiles.length > 0) {
+      saveHomeTiles(cloudTiles);
+    }
+  }
+
   CHARACTERS.length = 0;
   for (const [, orig] of ORIGINAL_CHARS_SNAPSHOT.entries()) {
     CHARACTERS.push(JSON.parse(JSON.stringify(orig)) as Character);
   }
 
-  // 2. Добавляем кастомных персонажей
   for (const cc of customChars) {
     const existingIdx = CHARACTERS.findIndex((x) => x.id === cc.id);
     if (existingIdx === -1) {
@@ -294,13 +420,13 @@ export const syncAdminContentToRuntime = (
     }
   }
 
-  // 3. Применяем серверные и локальные правки + 3 вида картинок + координаты + мета-тиры T0..T3
   const mergedEdits: Record<string, Record<string, unknown>> = {
     ...(serverEdits ?? {}),
     ...(localOverrides as Record<string, Record<string, unknown>>),
   };
 
   for (const [charId, patch] of Object.entries(mergedEdits)) {
+    if (charId === HOME_TILES_CLOUD_ID) continue;
     if (!patch || typeof patch !== 'object') continue;
     const rec = patch as Record<string, any>;
 
@@ -317,7 +443,6 @@ export const syncAdminContentToRuntime = (
       CHARACTER_ART_TRANSFORMS[charId] = rec.__artTransforms as CharacterArtTransforms;
     }
 
-    // Обновляем глобальный тир-лист Prydwen (T0 / T0.5 / T1 / T1.5 / T2 / T3)
     if (rec.prydwenMeta || rec.metaRating) {
       const existingPrydwen = PRYDWEN_CHAR_META[charId] ?? {
         toa: 'T1' as PrydwenTier,
@@ -325,8 +450,12 @@ export const syncAdminContentToRuntime = (
         column: 'Main DPS' as PrydwenRoleCol,
         tags: [],
       };
-      const toaTier = (rec.prydwenMeta?.toa || rec.metaRating?.tower || existingPrydwen.toa) as PrydwenTier;
-      const wastesTier = (rec.prydwenMeta?.wastes || rec.metaRating?.realm || existingPrydwen.wastes) as PrydwenTier;
+      const toaTier = (rec.prydwenMeta?.toa ||
+        rec.metaRating?.tower ||
+        existingPrydwen.toa) as PrydwenTier;
+      const wastesTier = (rec.prydwenMeta?.wastes ||
+        rec.metaRating?.realm ||
+        existingPrydwen.wastes) as PrydwenTier;
       const col = (rec.prydwenMeta?.column || existingPrydwen.column) as PrydwenRoleCol;
       const tags = Array.isArray(rec.prydwenMeta?.tags)
         ? rec.prydwenMeta.tags
@@ -348,7 +477,6 @@ export const syncAdminContentToRuntime = (
     }
   }
 
-  // 4. Применяем локальные карты 3 форматов картинок и их позиций
   for (const [id, url] of Object.entries(customImages)) {
     if (url) IMAGES[id] = url;
   }
@@ -385,7 +513,6 @@ export const initAdminRuntimeSync = async (): Promise<void> => {
   }
 };
 
-/* ---------- CMS Новостей и Гайдов ---------- */
 export const getAdminNews = (): AdminNewsItem[] => {
   try {
     const raw = localStorage.getItem(CUSTOM_NEWS_KEY);

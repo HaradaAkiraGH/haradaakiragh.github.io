@@ -1,10 +1,9 @@
 // Командный центр Администратора Stellar Wiki (Solaris-3 Root Terminal):
-// 1) Интерактивное перемещение картинки мышкой + ползунки X%, Y% и Масштаб% для всех 3 форматов (Card, Icon, Splash)
-// 2) Мгновенное сохранение Лора и биографии в карточку персонажа
-// 3) Редактирование мета-позиции Prydwen (T0 / T0.5 / T1 / T1.5 / T2 / T3), колонки роли и меток (Bane, Chafe, Frazzle и др.)
-// 4) Редактирование % пользы оружия
-// 5) Редактирование Наборов Эхо (Схема Cost, Мейн-статы Cost 4/3/1, Приоритет саб-статов) и Целевых статов 90 ур.
-// 6) Полный редактор Команд: добавление, редактирование, метки команды и смена приоритета команды (↑ / ↓)
+// 1) Вкладка «Главная (Плитки)»: добавление новых горизонтальных панелек на домашнюю страницу,
+//    редактирование заголовка, бейджа, описания, ссылки, загрузка картинки с ПК и живое превью
+//    с плавным растворением картинки влево на 50% ширины
+// 2) Интерактивное перемещение картинки мышкой + ползунки X%, Y% и Масштаб% для всех 3 форматов героев
+// 3) Редактирование мета-позиции Prydwen (T0–T3), % пользы оружия, наборов Эхо, статов Lv.90 и Команд
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -35,6 +34,8 @@ import {
   ArrowUp,
   ArrowDown,
   Users,
+  LayoutGrid,
+  ArrowUpRight,
 } from 'lucide-react';
 import { CHARACTERS } from '../data/characters';
 import { IMAGES } from '../data/images';
@@ -82,6 +83,11 @@ import {
   saveAdminGuides,
   AdminNewsItem,
   AdminGuideItem,
+  getHomeTiles,
+  saveHomeTiles,
+  resetHomeTiles,
+  HomeTileItem,
+  HOME_TILES_CLOUD_ID,
 } from '../utils/adminStorage';
 import {
   BUILTIN_MATERIALS,
@@ -97,7 +103,6 @@ const ROLES: CharacterRole[] = [
   'Defender',
 ];
 
-// Актуальные ранги меты Prydwen вместо S / A / B / C (Задача 3)
 const PRYDWEN_TIERS: PrydwenTier[] = ['T0', 'T0.5', 'T1', 'T1.5', 'T2', 'T3'];
 const PRYDWEN_COLUMNS: PrydwenRoleCol[] = [
   'Main DPS',
@@ -284,11 +289,11 @@ const createEmptyCharacter = (): any => ({
 });
 
 const inputCls =
-  'w-full bg-[#090b12] border border-white/12 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-ivory focus-ring';
+  'w-full bg-[#090b12]/90 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-ivory focus-ring';
 const labelCls =
   'block text-[11px] font-extrabold uppercase tracking-wider text-gray-400 mb-1.5';
 
-/* Интерактивный слот одного формата картинки с перетаскиванием мышкой и ползунками X / Y / Scale (Задача 1) */
+/* Интерактивный слот одного формата картинки с перетаскиванием мышкой и ползунками X / Y / Scale */
 const DraggableArtSlot = ({
   title,
   subtitle,
@@ -354,7 +359,6 @@ const DraggableArtSlot = ({
     if (!dragRef.current.active) return;
     const dx = e.clientX - dragRef.current.startX;
     const dy = e.clientY - dragRef.current.startY;
-    // Перемещение мыши вправо сдвигает кадр влево (естественное перетаскивание полотна)
     const nextX = Math.max(0, Math.min(100, Math.round(dragRef.current.origX - dx * 0.45)));
     const nextY = Math.max(0, Math.min(100, Math.round(dragRef.current.origY - dy * 0.45)));
     onChangePos({ ...pos, x: nextX, y: nextY });
@@ -392,7 +396,6 @@ const DraggableArtSlot = ({
             type="button"
             onClick={onResetPos}
             className="px-2 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-[10px] font-bold text-gray-300 cursor-pointer"
-            title="Сбросить позицию и зум"
           >
             Сброс
           </button>
@@ -407,7 +410,6 @@ const DraggableArtSlot = ({
         </div>
       </div>
 
-      {/* Окно интерактивного перетаскивания картинки мышкой */}
       <div className="relative rounded-xl bg-[#07080d] border border-white/10 p-2 flex flex-col items-center justify-center">
         <div
           onPointerDown={onPointerDown}
@@ -435,11 +437,10 @@ const DraggableArtSlot = ({
         </div>
         <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-gray-400">
           <Move size={11} className="text-accent-light" />
-          <span>Зажми картинку мышкой, чтобы сдвинуть ракурс</span>
+          <span>Зажми мышкой для сдвига ракурса</span>
         </span>
       </div>
 
-      {/* Ползунки точной подстройки X%, Y% и Зума */}
       <div className="space-y-1.5 bg-[#090b12]/90 p-2.5 rounded-xl border border-white/[0.06] text-[10px]">
         <div className="flex items-center justify-between gap-2">
           <span className="text-gray-400 w-20">Горизонт. X:</span>
@@ -496,7 +497,6 @@ const DraggableArtSlot = ({
   );
 };
 
-/* Универсальный блок загрузки и позиционирования всех 3 форматов артов персонажа */
 const TripleArtUploader = ({
   cardUrl,
   iconUrl,
@@ -595,14 +595,14 @@ export const AdminPage = () => {
   useDocumentMeta({
     title: 'Root-Терминал Администратора — Stellar Wiki',
     description:
-      'Панель управления Stellar Wiki: позиционирование артов, мета T0–T3, оружие с %, наборы Эхо, статы и команды.',
+      'Панель управления Stellar Wiki: редактор плиток Главной страницы, позиционирование артов, мета T0–T3, оружие, Эхо и команды.',
   });
 
   const { token, user } = useAuth();
 
   const [mainTab, setMainTab] = useState<
-    'create-char' | 'edit-char' | 'bestiary' | 'cms' | 'database'
-  >('edit-char');
+    'home-tiles' | 'edit-char' | 'create-char' | 'bestiary' | 'cms' | 'database'
+  >('home-tiles');
 
   const [refreshTick, setRefreshTick] = useState(0);
   const [statusMsg, setStatusMsg] = useState<{
@@ -616,7 +616,14 @@ export const AdminPage = () => {
     setTimeout(() => setStatusMsg(null), 5000);
   };
 
-  /* ==================== СОСТОЯНИЕ ВКЛАДКИ 1: СОЗДАНИЕ НОВОГО ПЕРСОНАЖА ==================== */
+  /* ==================== СОСТОЯНИЕ ВКЛАДКИ «ГЛАВНАЯ (ПЛИТКИ)» ==================== */
+  const [homeTiles, setHomeTilesState] = useState<HomeTileItem[]>(() =>
+    getHomeTiles(),
+  );
+  const tileFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingTileIdx, setUploadingTileIdx] = useState<number | null>(null);
+
+  /* ==================== СОСТОЯНИЕ ВКЛАДКИ СОЗДАНИЯ НОВОГО ПЕРСОНАЖА ==================== */
   const [newChar, setNewChar] = useState<any>(() => createEmptyCharacter());
   const [newCardUrl, setNewCardUrl] = useState<string>('/images/Camellya_Card.webp');
   const [newIconUrl, setNewIconUrl] = useState<string>('');
@@ -626,7 +633,7 @@ export const AdminPage = () => {
   );
   const [autoSlug, setAutoSlug] = useState(true);
 
-  /* ==================== СОСТОЯНИЕ ВКЛАДКИ 2: РЕДАКТОР СУЩЕСТВУЮЩИХ И НОВЫХ ГЕРОЕВ ==================== */
+  /* ==================== СОСТОЯНИЕ ВКЛАДКИ РЕДАКТОРА СУЩЕСТВУЮЩИХ ГЕРОЕВ ==================== */
   const [charSearch, setCharSearch] = useState('');
   const [charElFilter, setCharElFilter] = useState<'all' | ElementType>('all');
   const [selectedCharId, setSelectedCharId] = useState<string>(
@@ -651,7 +658,7 @@ export const AdminPage = () => {
     Record<string, Record<string, unknown>>
   >({});
 
-  /* ==================== СОСТОЯНИЕ ВКЛАДКИ 3: БЕСТИАРИЙ ==================== */
+  /* ==================== СОСТОЯНИЕ БЕСТИАРИЯ И CMS ==================== */
   const [bestiaryEntries, setBestiaryEntries] = useState<BestiaryEntry[]>([]);
   const [bestiarySearch, setBestiarySearch] = useState('');
   const [newBestiaryItem, setNewBestiaryItem] = useState({
@@ -663,7 +670,6 @@ export const AdminPage = () => {
     source: '',
   });
 
-  /* ==================== СОСТОЯНИЕ ВКЛАДКИ 4: CMS НОВОСТЕЙ И ГАЙДОВ ==================== */
   const [newsList, setNewsList] = useState<AdminNewsItem[]>(() => getAdminNews());
   const [guidesList, setGuidesList] = useState<AdminGuideItem[]>(() => getAdminGuides());
   const [newNews, setNewNews] = useState<Omit<AdminNewsItem, 'id'>>({
@@ -695,6 +701,7 @@ export const AdminPage = () => {
         }
         setServerEdits(map);
         syncAdminContentToRuntime(map);
+        setHomeTilesState(getHomeTiles());
         setRefreshTick((t: number) => t + 1);
       })
       .catch((_: any) => {});
@@ -704,7 +711,6 @@ export const AdminPage = () => {
       .catch((_: any) => {});
   }, []);
 
-  // Загружаем данные, 3 картинки, координаты X/Y/Scale и мета-ранги T0..T3 при выборе персонажа
   useEffect(() => {
     const found = CHARACTERS.find((c) => c.id === selectedCharId);
     if (!found) return;
@@ -752,7 +758,97 @@ export const AdminPage = () => {
     return [...bestiaryEntries, ...builtin];
   }, [bestiaryEntries]);
 
-  /* ==================== ОБРАБОТЧИКИ ВКЛАДКИ 1: СОЗДАНИЕ НОВОГО ПЕРСОНАЖА ==================== */
+  /* ==================== ОБРАБОТЧИКИ ПЛИТОК ГЛАВНОЙ СТРАНИЦЫ ==================== */
+  const handleAddHomeTile = () => {
+    const newTile: HomeTileItem = {
+      id: `tile-${Date.now()}`,
+      title: 'Новая панелька раздела',
+      badge: 'РАЗДЕЛ СОЛАРИС-3',
+      description: 'Описание раздела или инструмента, которое будет отображаться на Главной странице.',
+      path: '/characters',
+      image: '/images/Camellya_Card.webp',
+      imagePosX: 50,
+      imagePosY: 25,
+      imageScale: 105,
+    };
+    setHomeTilesState((prev) => [...prev, newTile]);
+  };
+
+  const handleUpdateHomeTile = (idx: number, patch: Partial<HomeTileItem>) => {
+    setHomeTilesState((prev) =>
+      prev.map((item, i) => (i === idx ? { ...item, ...patch } : item)),
+    );
+  };
+
+  const handleMoveHomeTile = (idx: number, dir: -1 | 1) => {
+    const target = idx + dir;
+    if (target < 0 || target >= homeTiles.length) return;
+    const copy = [...homeTiles];
+    const tmp = copy[idx];
+    copy[idx] = copy[target];
+    copy[target] = tmp;
+    setHomeTilesState(copy);
+  };
+
+  const handleDeleteHomeTile = (idx: number) => {
+    setHomeTilesState((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleUploadHomeTileImage = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file || uploadingTileIdx === null) return;
+    try {
+      const dataUrl = await compressImage(file, 960, 640);
+      handleUpdateHomeTile(uploadingTileIdx, { image: dataUrl });
+    } catch {
+      notify('err', 'Не удалось загрузить картинку для плитки');
+    } finally {
+      setUploadingTileIdx(null);
+      e.target.value = '';
+    }
+  };
+
+  const handleSaveAllHomeTiles = async () => {
+    setBusy(true);
+    try {
+      saveHomeTiles(homeTiles);
+      if (token) {
+        await apiSaveCharacterOverride(token, HOME_TILES_CLOUD_ID, {
+          tiles: homeTiles,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      notify(
+        'ok',
+        `Все ${homeTiles.length} плиток Главной страницы успешно сохранены и обновлены!`,
+      );
+    } catch (e: any) {
+      notify(
+        'err',
+        e instanceof Error
+          ? `Сохранено локально, ошибка облака: ${e.message}`
+          : 'Ошибка сохранения плиток',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleResetAllHomeTiles = async () => {
+    if (!window.confirm('Вернуть стандартные 6 плиток Главной страницы?')) return;
+    const defaults = resetHomeTiles();
+    setHomeTilesState(defaults);
+    if (token) {
+      await apiDeleteCharacterOverride(token, HOME_TILES_CLOUD_ID).catch(
+        (_: any) => {},
+      );
+    }
+    notify('ok', 'Плитки Главной страницы сброшены к стандартным');
+  };
+
+  /* ==================== ОБРАБОТЧИКИ ПЕРСОНАЖЕЙ ==================== */
   const handleNewCharNameChange = (name: string) => {
     const nextId = autoSlug ? slugifyName(name) || 'new-resonator' : newChar.id;
     setNewChar((prev: any) => ({ ...prev, name, id: nextId }));
@@ -816,7 +912,6 @@ export const AdminPage = () => {
     }
   };
 
-  /* ==================== ОБРАБОТЧИКИ ВКЛАДКИ 2: ВИЗУАЛЬНЫЙ РЕДАКТОР ГЕРОЕВ ==================== */
   const handleSaveEditedCharacter = async () => {
     setBusy(true);
     try {
@@ -831,7 +926,6 @@ export const AdminPage = () => {
         }
       }
 
-      // 1. Сохраняем все 3 формата картинок и их координаты X/Y/Scale
       saveCharacterArtBundle(toSave.id, {
         card: draftCardUrl,
         icon: draftIconUrl,
@@ -839,7 +933,6 @@ export const AdminPage = () => {
         transforms: draftTransforms,
       });
 
-      // 2. Сохраняем оверрайд локально (включая lore, prydwenMeta, weapons с percent, echoSets, teams)
       const fullPayload = {
         ...toSave,
         __cardImage: draftCardUrl,
@@ -856,7 +949,6 @@ export const AdminPage = () => {
         );
       }
 
-      // 3. Отправляем в Supabase
       if (token) {
         await apiSaveCharacterOverride(
           token,
@@ -872,7 +964,7 @@ export const AdminPage = () => {
       setRefreshTick((t) => t + 1);
       notify(
         'ok',
-        `Все изменения для «${toSave.name}» (ракурс картинок, лор, мета T0–T3, эхо, оружие и команды) сохранены!`,
+        `Все изменения для «${toSave.name}» успешно сохранены!`,
       );
     } catch (e: any) {
       notify('err', e instanceof Error ? e.message : 'Ошибка сохранения');
@@ -910,7 +1002,6 @@ export const AdminPage = () => {
     }
   };
 
-  // Смена приоритета команды (Задача 8)
   const moveTeamPriority = (idx: number, dir: -1 | 1) => {
     const list = Array.isArray(draftChar.teams) ? [...draftChar.teams] : [];
     const targetIdx = idx + dir;
@@ -925,7 +1016,7 @@ export const AdminPage = () => {
     setDraftChar({ ...draftChar, teams: reindexed });
   };
 
-  /* ==================== ОБРАБОТЧИКИ ВКЛАДКИ 3: БЕСТИАРИЙ ==================== */
+  /* ==================== ОБРАБОТЧИКИ БЕСТИАРИЯ И CMS ==================== */
   const handleAddBestiaryEntry = async () => {
     if (!token || !newBestiaryItem.name.trim()) {
       notify('err', 'Укажи название предмета Бестиария');
@@ -999,7 +1090,6 @@ export const AdminPage = () => {
     }
   };
 
-  /* ==================== ОБРАБОТЧИКИ ВКЛАДКИ 4: НОВОСТИ И ГАЙДЫ ==================== */
   const handleAddNews = () => {
     if (!newNews.title.trim()) return;
     const item: AdminNewsItem = {
@@ -1041,6 +1131,7 @@ export const AdminPage = () => {
   const exportFullBackupJson = () => {
     const payload = {
       exportedAt: new Date().toISOString(),
+      homeTiles,
       customCharacters: getCustomCharacters(),
       charOverrides: getLocalCharOverrides(),
       serverEdits,
@@ -1069,7 +1160,6 @@ export const AdminPage = () => {
     });
   }, [charSearch, charElFilter, refreshTick]);
 
-  // Живая карточка для превью нового персонажа
   const previewNewChar = useMemo<any>(() => {
     const previewId = slugifyName(newChar.id || newChar.name) || 'new-resonator';
     if (newCardUrl) IMAGES[previewId] = newCardUrl;
@@ -1090,46 +1180,55 @@ export const AdminPage = () => {
         }
       `}</style>
 
+      {/* Скрытый инпут для загрузки картинки плитки Главной */}
+      <input
+        ref={tileFileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleUploadHomeTileImage}
+        className="hidden"
+      />
+
       {/* ==================== ШАПКА КОМАНДНОГО ЦЕНТРА АДМИНА ==================== */}
-      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-[#171310] via-[#10121c] to-[#0b0d14] p-6 sm:p-8 shadow-[0_25px_70px_rgba(0,0,0,0.85)] solaris-crest">
+      <div className="glass-panel relative overflow-hidden p-6 sm:p-8">
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -top-24 -right-24 w-96 h-96 rounded-full bg-amber-500/10 blur-3xl"
+          className="pointer-events-none absolute -top-24 -right-24 w-96 h-96 rounded-full bg-amber-500/15 blur-3xl"
         />
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/40 text-amber-300 text-[11px] font-black uppercase tracking-widest mb-2.5">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full liquid-pill text-amber-300 text-[11px] font-black uppercase tracking-widest mb-2.5">
               <ShieldCheck size={14} />
-              <span>SOLARIS-3 ROOT TERMINAL · ACCESS GRANTED</span>
+              <span>SOLARIS-3 ROOT TERMINAL · LIQUID GLASS EDITION</span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
               Панель управления Stellar Wiki
             </h1>
-            <p className="text-gray-400 text-sm mt-1">
-              Перемещение ракурса картинок, мета T0–T3, конструктор Эхо/Оружия/Статов и Команд
+            <p className="text-gray-300 text-sm mt-1">
+              Редактор плиток Главной страницы, 3 форматов артов с перемещением, меты T0–T3, Эхо, оружия и команд
             </p>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 shrink-0">
-            <div className="p-3.5 rounded-2xl bg-black/45 border border-white/[0.06] text-center min-w-[115px]">
-              <span className="text-[10px] font-bold uppercase text-gray-400 block">
+            <div className="p-3.5 rounded-2xl liquid-pill text-center min-w-[115px]">
+              <span className="text-[10px] font-bold uppercase text-gray-300 block">
+                Плиток Главной
+              </span>
+              <strong className="text-2xl font-black text-amber-300 tabular-nums mt-0.5 block">
+                {homeTiles.length}
+              </strong>
+            </div>
+            <div className="p-3.5 rounded-2xl liquid-pill text-center min-w-[115px]">
+              <span className="text-[10px] font-bold uppercase text-gray-300 block">
                 Резонаторов
               </span>
               <strong className="text-2xl font-black text-white tabular-nums mt-0.5 block">
                 {CHARACTERS.length}
               </strong>
             </div>
-            <div className="p-3.5 rounded-2xl bg-black/45 border border-white/[0.06] text-center min-w-[115px]">
-              <span className="text-[10px] font-bold uppercase text-gray-400 block">
-                Новых карточек
-              </span>
-              <strong className="text-2xl font-black text-amber-300 tabular-nums mt-0.5 block">
-                {customCharsList.length}
-              </strong>
-            </div>
-            <div className="p-3.5 rounded-2xl bg-black/45 border border-white/[0.06] text-center min-w-[115px]">
-              <span className="text-[10px] font-bold uppercase text-gray-400 block">
+            <div className="p-3.5 rounded-2xl liquid-pill text-center min-w-[115px]">
+              <span className="text-[10px] font-bold uppercase text-gray-300 block">
                 Правок героев
               </span>
               <strong className="text-2xl font-black text-purple-300 tabular-nums mt-0.5 block">
@@ -1141,8 +1240,8 @@ export const AdminPage = () => {
                 }
               </strong>
             </div>
-            <div className="p-3.5 rounded-2xl bg-black/45 border border-white/[0.06] text-center min-w-[115px]">
-              <span className="text-[10px] font-bold uppercase text-gray-400 block">
+            <div className="p-3.5 rounded-2xl liquid-pill text-center min-w-[115px]">
+              <span className="text-[10px] font-bold uppercase text-gray-300 block">
                 В Бестиарии
               </span>
               <strong className="text-2xl font-black text-emerald-300 tabular-nums mt-0.5 block">
@@ -1152,9 +1251,10 @@ export const AdminPage = () => {
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-wrap gap-2 mt-6 pt-5 border-t border-white/[0.07]">
+        <div className="relative z-10 flex flex-wrap gap-2 mt-6 pt-5 border-t border-white/[0.1]">
           {(
             [
+              { id: 'home-tiles', label: 'Главная (Плитки)', icon: LayoutGrid },
               { id: 'edit-char', label: 'Конструктор героев (61+)', icon: Sliders },
               { id: 'create-char', label: '+ Создать персонажа', icon: UserPlus },
               { id: 'bestiary', label: 'Бестиарий (163+)', icon: Archive },
@@ -1172,7 +1272,7 @@ export const AdminPage = () => {
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
                   active
                     ? 'bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] shadow-lg'
-                    : 'bg-white/[0.05] hover:bg-white/[0.1] text-gray-300 hover:text-white'
+                    : 'liquid-pill text-gray-200 hover:text-white'
                 }`}
               >
                 <Icon size={16} />
@@ -1206,6 +1306,303 @@ export const AdminPage = () => {
           >
             <X size={16} />
           </button>
+        </div>
+      )}
+
+      {/* =================================================================================
+          МОДУЛЬ 0: РЕДАКТОР ПЛИТОК ДОМАШНЕЙ СТРАНИЦЫ (Задача 3)
+         ================================================================================= */}
+      {mainTab === 'home-tiles' && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="glass-panel p-6 sm:p-7 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/[0.1]">
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
+                  <LayoutGrid size={22} className="text-accent-light" />
+                  <span>Горизонтальные плитки на Главной странице ({homeTiles.length})</span>
+                </h2>
+                <p className="text-xs text-gray-300 mt-1">
+                  Добавляй новые панельки, меняй заголовки, описания, ссылки и картинки. Картинка занимает правую половину плитки и плавно растворяется влево.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleAddHomeTile}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl liquid-pill text-xs font-extrabold text-amber-200 hover:text-white cursor-pointer"
+                >
+                  <Plus size={15} />
+                  <span>Добавить панельку</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetAllHomeTiles}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/30 text-xs font-bold text-rose-200 cursor-pointer"
+                >
+                  <RotateCcw size={14} />
+                  <span>Сбросить</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveAllHomeTiles}
+                  disabled={busy}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] text-xs sm:text-sm font-black shadow-lg hover:brightness-105 cursor-pointer disabled:opacity-50"
+                >
+                  <Save size={16} />
+                  <span>{busy ? 'Сохранение...' : 'Сохранить плитки Главной'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Список всех редактируемых плиток с живым превью */}
+            <div className="space-y-6">
+              {homeTiles.map((tile, idx) => {
+                const posX = tile.imagePosX ?? 50;
+                const posY = tile.imagePosY ?? 30;
+                const scale = tile.imageScale ?? 105;
+
+                return (
+                  <div
+                    key={tile.id}
+                    className="p-5 rounded-3xl bg-black/40 border border-white/12 grid grid-cols-1 xl:grid-cols-[1fr,480px] gap-6 items-center"
+                  >
+                    {/* Левая часть: поля редактирования плитки */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/[0.08]">
+                        <div className="flex items-center gap-2">
+                          <span className="px-3 py-1 rounded-xl bg-amber-400 text-[#09090b] text-xs font-black">
+                            Плитка #{idx + 1}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveHomeTile(idx, -1)}
+                            disabled={idx === 0}
+                            className="p-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-gray-200 disabled:opacity-30 cursor-pointer"
+                            title="Переместить выше"
+                          >
+                            <ArrowUp size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveHomeTile(idx, 1)}
+                            disabled={idx === homeTiles.length - 1}
+                            className="p-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-gray-200 disabled:opacity-30 cursor-pointer"
+                            title="Переместить ниже"
+                          >
+                            <ArrowDown size={14} />
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteHomeTile(idx)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 text-xs font-bold cursor-pointer"
+                        >
+                          <Trash2 size={14} />
+                          <span>Удалить</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <label className="block">
+                          <span className={labelCls}>Заголовок плитки</span>
+                          <input
+                            type="text"
+                            value={tile.title}
+                            onChange={(e) =>
+                              handleUpdateHomeTile(idx, { title: e.target.value })
+                            }
+                            placeholder="Каталог Резонаторов"
+                            className={inputCls}
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className={labelCls}>Верхний бейдж</span>
+                          <input
+                            type="text"
+                            value={tile.badge}
+                            onChange={(e) =>
+                              handleUpdateHomeTile(idx, { badge: e.target.value })
+                            }
+                            placeholder="БАЗА ГЕРОЕВ"
+                            className={inputCls}
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className={labelCls}>Ссылка при клике (URL)</span>
+                          <input
+                            type="text"
+                            value={tile.path}
+                            onChange={(e) =>
+                              handleUpdateHomeTile(idx, { path: e.target.value })
+                            }
+                            placeholder="/characters или /bestiary"
+                            className={`${inputCls} font-mono`}
+                          />
+                        </label>
+                      </div>
+
+                      <label className="block">
+                        <span className={labelCls}>Описание внутри плитки</span>
+                        <textarea
+                          rows={2}
+                          value={tile.description}
+                          onChange={(e) =>
+                            handleUpdateHomeTile(idx, {
+                              description: e.target.value,
+                            })
+                          }
+                          placeholder="Подробное описание раздела..."
+                          className={inputCls}
+                        />
+                      </label>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-[1fr,auto] gap-2.5 items-end">
+                        <label className="block">
+                          <span className={labelCls}>
+                            Картинка плитки (занимает 50% справа и плавно исчезает влево)
+                          </span>
+                          <input
+                            type="text"
+                            value={tile.image}
+                            onChange={(e) =>
+                              handleUpdateHomeTile(idx, { image: e.target.value })
+                            }
+                            placeholder="Вставь ссылку https://... или /images/... либо загрузи файл"
+                            className={inputCls}
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUploadingTileIdx(idx);
+                            tileFileInputRef.current?.click();
+                          }}
+                          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#caa07d] to-[#f7ece6] text-[#09090b] text-xs font-black shrink-0 cursor-pointer"
+                        >
+                          <Upload size={14} />
+                          <span>Загрузить с ПК</span>
+                        </button>
+                      </div>
+
+                      {/* Ползунки ракурса картинки в плитке */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-2xl bg-[#090b12]/80 border border-white/[0.06] text-[11px]">
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 shrink-0">Сдвиг X:</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            value={posX}
+                            onChange={(e) =>
+                              handleUpdateHomeTile(idx, {
+                                imagePosX: Number(e.target.value),
+                              })
+                            }
+                            className="flex-1 accent-[#caa07d] cursor-pointer"
+                          />
+                          <span className="font-mono text-ivory w-8 text-right">
+                            {posX}%
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 shrink-0">Сдвиг Y:</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            value={posY}
+                            onChange={(e) =>
+                              handleUpdateHomeTile(idx, {
+                                imagePosY: Number(e.target.value),
+                              })
+                            }
+                            className="flex-1 accent-[#caa07d] cursor-pointer"
+                          />
+                          <span className="font-mono text-ivory w-8 text-right">
+                            {posY}%
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 shrink-0">Зум:</span>
+                          <input
+                            type="range"
+                            min={80}
+                            max={180}
+                            value={scale}
+                            onChange={(e) =>
+                              handleUpdateHomeTile(idx, {
+                                imageScale: Number(e.target.value),
+                              })
+                            }
+                            className="flex-1 accent-[#caa07d] cursor-pointer"
+                          />
+                          <span className="font-mono text-amber-300 w-9 text-right">
+                            {scale}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Правая часть: ЖИВОЕ ПРЕВЬЮ ПЛИТКИ (1 в 1 как на Главной странице) */}
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400 block">
+                        Живое превью плитки (Liquid Glass + растворение влево):
+                      </span>
+                      <div className="glass-panel-hover relative overflow-hidden min-h-[195px] p-6 flex flex-col justify-between">
+                        {tile.image && (
+                          <div
+                            aria-hidden="true"
+                            className="pointer-events-none select-none absolute inset-y-0 right-0 w-1/2 overflow-hidden tile-image-fade-left"
+                          >
+                            <img
+                              src={tile.image}
+                              alt=""
+                              draggable={false}
+                              style={{
+                                objectPosition: `${posX}% ${posY}%`,
+                                transformOrigin: `${posX}% ${posY}%`,
+                                transform: `scale(${scale / 100})`,
+                              }}
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-r from-[#0a0c14] via-transparent to-transparent opacity-65" />
+                          </div>
+                        )}
+
+                        <div className="relative z-10 max-w-[60%] space-y-2">
+                          {tile.badge && (
+                            <span className="inline-block px-3 py-1 rounded-full liquid-pill text-[10px] font-black uppercase tracking-[0.18em] text-accent-light">
+                              {tile.badge}
+                            </span>
+                          )}
+                          <h3 className="text-xl font-black text-white leading-snug">
+                            {tile.title}
+                          </h3>
+                          <p className="text-xs text-gray-300 leading-relaxed line-clamp-3">
+                            {tile.description}
+                          </p>
+                        </div>
+
+                        <div className="relative z-10 pt-3 flex items-center gap-1.5 text-xs font-extrabold text-accent-light">
+                          <span>Открыть раздел</span>
+                          <ArrowUpRight size={14} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1347,7 +1744,6 @@ export const AdminPage = () => {
               </label>
             </div>
 
-            {/* Загрузчик 3 форматов с перетаскиванием и ползунками X/Y/Scale */}
             <TripleArtUploader
               cardUrl={newCardUrl}
               iconUrl={newIconUrl}
@@ -1359,7 +1755,6 @@ export const AdminPage = () => {
               onChangeTransforms={setNewTransforms}
             />
 
-            {/* Тиры Prydwen T0–T3 и Базовые статы */}
             <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
               <label className="block">
                 <span className={labelCls}>Мета ToA (T0–T3)</span>
@@ -1512,7 +1907,6 @@ export const AdminPage = () => {
          ================================================================================= */}
       {mainTab === 'edit-char' && (
         <div className="grid grid-cols-1 lg:grid-cols-[300px,1fr] gap-6 items-start">
-          {/* Левая колонка: Выбор персонажа */}
           <div className="glass-panel p-4 space-y-3">
             <div className="relative">
               <Search
@@ -1600,7 +1994,6 @@ export const AdminPage = () => {
             </div>
           </div>
 
-          {/* Правая колонка: Конструктор выбранного героя */}
           <div className="glass-panel p-6 space-y-6 min-w-0 animate-fade-in">
             <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
               <div className="flex items-center gap-3.5">
@@ -1659,7 +2052,6 @@ export const AdminPage = () => {
               </div>
             </div>
 
-            {/* Переключатель 5 подвкладок конструктора */}
             <div className="flex flex-wrap gap-2">
               {(
                 [
@@ -1690,12 +2082,8 @@ export const AdminPage = () => {
               ))}
             </div>
 
-            {/* ===================================================================
-                ПОДВКЛАДКА 1: 3 АРТА С ПЕРЕМЕЩЕНИЕМ, МЕТА T0–T3 И ЛОР (Задачи 1, 2, 3)
-               =================================================================== */}
             {editorSubTab === 'general' && (
               <div className="space-y-6 animate-fade-in">
-                {/* Загрузчик и интерактивное перемещение 3 форматов картинок (Задача 1) */}
                 <TripleArtUploader
                   cardUrl={draftCardUrl}
                   iconUrl={draftIconUrl}
@@ -1707,7 +2095,6 @@ export const AdminPage = () => {
                   onChangeTransforms={setDraftTransforms}
                 />
 
-                {/* Позиция в Мете Prydwen: T0, T0.5, T1, T1.5, T2, T3 + Роль + Метки механик (Задача 3) */}
                 <div className="p-5 rounded-2xl bg-black/45 border border-amber-400/25 space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-black uppercase tracking-wider text-amber-300 flex items-center gap-2">
@@ -1787,7 +2174,6 @@ export const AdminPage = () => {
                     </label>
                   </div>
 
-                  {/* Выбор меток Prydwen (Chafe, Bane, Frazzle, Erosion и т.д.) */}
                   <div>
                     <span className={labelCls}>
                       Подписи механик под иконкой в тир-листе (кликни, чтобы включить/выключить)
@@ -1830,7 +2216,6 @@ export const AdminPage = () => {
                   </div>
                 </div>
 
-                {/* Имя, Титул, Стихия, Оружие, Роль, Редкость */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-white/[0.08]">
                   <label className="block">
                     <span className={labelCls}>Имя персонажа</span>
@@ -1946,7 +2331,6 @@ export const AdminPage = () => {
                   </label>
                 </div>
 
-                {/* Лор и биография (Задача 2) */}
                 <label className="block">
                   <span className={labelCls}>
                     Лор и биография (отображается в верхнем облачке карточки персонажа и во вкладке «Лор»)
@@ -2006,12 +2390,8 @@ export const AdminPage = () => {
               </div>
             )}
 
-            {/* ===================================================================
-                ПОДВКЛАДКА 2: ОРУЖИЕ (% ПОЛЬЗЫ), ЭХО (СХЕМА COST, МЕЙН/САБ СТАТЫ) И LV.90 (Задачи 5 и 6)
-               =================================================================== */}
             {editorSubTab === 'gear' && (
               <div className="space-y-7 animate-fade-in">
-                {/* СЕКЦИЯ 1: БАЗОВЫЕ СТАТЫ LV.90 (для ползунка 10–90) И ЦЕЛЕВЫЕ СТАТЫ (Задача 6) */}
                 <div className="p-5 rounded-2xl bg-black/45 border border-white/10 space-y-4">
                   <h3 className="text-sm font-black uppercase tracking-wider text-accent-light">
                     Базовые показатели на 90 ур. (от них работает ползунок 10–90 ур.)
@@ -2087,7 +2467,6 @@ export const AdminPage = () => {
                     </label>
                   </div>
 
-                  {/* Целевые показатели статов (Target Stats) */}
                   <div className="space-y-2.5 pt-3 border-t border-white/[0.08]">
                     <div className="flex items-center justify-between">
                       <span className={labelCls}>
@@ -2163,7 +2542,6 @@ export const AdminPage = () => {
                   </div>
                 </div>
 
-                {/* СЕКЦИЯ 2: РЕКОМЕНДУЕМОЕ ОРУЖИЕ С % ПОЛЬЗЫ (Задача 5) */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-black uppercase tracking-wider text-accent-light flex items-center gap-2">
@@ -2298,7 +2676,6 @@ export const AdminPage = () => {
                   ))}
                 </div>
 
-                {/* СЕКЦИЯ 3: ЛУЧШИЕ НАБОРЫ ЭХО (Схема Cost, Мейн-статы Cost 4/3/1, Приоритет саб-статов) (Задача 6) */}
                 <div className="space-y-3 pt-4 border-t border-white/[0.08]">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-black uppercase tracking-wider text-accent-light flex items-center gap-2">
@@ -2402,7 +2779,6 @@ export const AdminPage = () => {
                         </div>
                       </div>
 
-                      {/* Мейн-статы по Cost 4 / Cost 3 / Cost 1 */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <label className="block">
                           <span className={labelCls}>Мейн-стат Cost 4</span>
@@ -2449,7 +2825,6 @@ export const AdminPage = () => {
                         </label>
                       </div>
 
-                      {/* Приоритет саб-статов */}
                       <label className="block">
                         <span className={labelCls}>Приоритет саб-статов</span>
                         <input
@@ -2495,9 +2870,6 @@ export const AdminPage = () => {
               </div>
             )}
 
-            {/* ===================================================================
-                ПОДВКЛАДКА 3: КОМАНДЫ, МЕТКИ КОМАНДЫ И ПРИОРИТЕТ КОМАНДЫ (Задачи 7 и 8)
-               =================================================================== */}
             {editorSubTab === 'teams' && (
               <div className="space-y-6 animate-fade-in">
                 <div className="space-y-4">
@@ -2548,7 +2920,6 @@ export const AdminPage = () => {
                         key={idx}
                         className="p-5 rounded-2xl bg-black/45 border border-white/10 space-y-4"
                       >
-                        {/* Верхняя строка: Приоритет команды (↑ / ↓) + Название команды + Удаление */}
                         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/[0.07]">
                           <div className="flex items-center gap-2">
                             <span className="px-3 py-1.5 rounded-xl bg-amber-400 text-[#09090b] text-xs font-black">
@@ -2560,7 +2931,6 @@ export const AdminPage = () => {
                               onClick={() => moveTeamPriority(idx, -1)}
                               disabled={idx === 0}
                               className="p-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-gray-200 disabled:opacity-30 cursor-pointer"
-                              title="Повысить приоритет команды"
                             >
                               <ArrowUp size={14} />
                             </button>
@@ -2569,7 +2939,6 @@ export const AdminPage = () => {
                               onClick={() => moveTeamPriority(idx, 1)}
                               disabled={idx === (draftChar.teams?.length ?? 1) - 1}
                               className="p-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-gray-200 disabled:opacity-30 cursor-pointer"
-                              title="Понизить приоритет команды"
                             >
                               <ArrowDown size={14} />
                             </button>
@@ -2583,7 +2952,7 @@ export const AdminPage = () => {
                                 next[idx] = { ...team, name: e.target.value };
                                 setDraftChar({ ...draftChar, teams: next });
                               }}
-                              placeholder="Название команды (например: Camellya Crimson Hypercarry)"
+                              placeholder="Название команды"
                               className={inputCls}
                             />
                           </div>
@@ -2599,13 +2968,11 @@ export const AdminPage = () => {
                               })
                             }
                             className="p-2 text-gray-500 hover:text-rose-400 cursor-pointer"
-                            title="Удалить команду"
                           >
                             <Trash2 size={17} />
                           </button>
                         </div>
 
-                        {/* Выбор 3 участников команды */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           {[0, 1, 2].map((slotIdx) => (
                             <label key={slotIdx} className="block">
@@ -2642,7 +3009,6 @@ export const AdminPage = () => {
                           ))}
                         </div>
 
-                        {/* Метки команды (Задача 7) */}
                         <div className="space-y-2">
                           <span className={labelCls}>
                             Метки команды (кликни для выбора или добавь свою метку)
@@ -2676,7 +3042,6 @@ export const AdminPage = () => {
                               );
                             })}
 
-                            {/* Отображение кастомных меток */}
                             {tags
                               .filter((x) => !TEAM_PRESET_TAGS.includes(x))
                               .map((customT) => (
@@ -2747,7 +3112,7 @@ export const AdminPage = () => {
                               };
                               setDraftChar({ ...draftChar, teams: next });
                             }}
-                            placeholder="Как работает эта пачка и какие баффы передаются..."
+                            placeholder="Как работает эта пачка..."
                             className={inputCls}
                           />
                         </label>
@@ -2756,7 +3121,6 @@ export const AdminPage = () => {
                   })}
                 </div>
 
-                {/* Материалы вознесения */}
                 <div className="space-y-3 pt-4 border-t border-white/[0.08]">
                   <div className="flex items-center justify-between">
                     <span className={labelCls}>Материалы вознесения</span>
@@ -2837,7 +3201,6 @@ export const AdminPage = () => {
               </div>
             )}
 
-            {/* ПОДВКЛАДКА 4: НАВЫКИ И СОЗВЕЗДИЯ S1–S6 */}
             {editorSubTab === 'skills' && (
               <div className="space-y-6 animate-fade-in">
                 <div className="space-y-3">
@@ -3001,7 +3364,6 @@ export const AdminPage = () => {
               </div>
             )}
 
-            {/* ПОДВКЛАДКА 5: RAW JSON */}
             {editorSubTab === 'json' && (
               <div className="space-y-3 animate-fade-in">
                 <p className="text-xs text-gray-400">
@@ -3351,7 +3713,7 @@ export const AdminPage = () => {
               <span>Резервное копирование и синхронизация базы</span>
             </h2>
             <p className="text-xs text-gray-400 mt-1">
-              Скачай полный JSON-слепок всех созданных персонажей, билдов, новостей и гайдов или синхронизируй базу с облаком Supabase
+              Скачай полный JSON-слепок всех созданных персонажей, плиток Главной, билдов, новостей и гайдов или синхронизируй базу с облаком Supabase
             </p>
           </div>
 
@@ -3369,7 +3731,7 @@ export const AdminPage = () => {
               type="button"
               onClick={handleSync163Materials}
               disabled={busy}
-              className="flex items-center gap-2 px-5 py-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs sm:text-sm font-bold text-ivory cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-2 px-5 py-3 rounded-xl liquid-pill text-xs sm:text-sm font-bold text-ivory cursor-pointer disabled:opacity-50"
             >
               <CloudUpload size={16} className="text-accent-light" />
               <span>Синхронизировать все 163 материала с Supabase</span>
